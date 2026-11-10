@@ -42,17 +42,13 @@ class PetkitBinarySensorBase(CoordinatorEntity[PetkitBLECoordinator], BinarySens
     
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device info dynamically."""
-        device_id = self.coordinator.device.serial if self.coordinator.device.serial != "Uninitialized" else self.coordinator.address
-        device_name = self.coordinator.device.name_readable if self.coordinator.device.name_readable != "Uninitialized" else "Water Fountain"
-        
-        return {
-            "identifiers": {(DOMAIN, device_id)},
-            "name": device_name,
-            "manufacturer": "Petkit",
-            "model": self.coordinator.device.product_name or "Water Fountain",
-            "sw_version": str(self.coordinator.device.firmware) if self.coordinator.device.firmware else "Unknown",
-        }
+        """Return device info (stable identifier, see coordinator)."""
+        return self.coordinator.device_info
+
+    @property
+    def available(self) -> bool:
+        """Entity availability follows the connection, not an update timer."""
+        return self.coordinator.is_available
 
 class PetkitFilterProblemSensor(PetkitBinarySensorBase):
     """Filter problem binary sensor."""
@@ -62,7 +58,7 @@ class PetkitFilterProblemSensor(PetkitBinarySensorBase):
     def __init__(self, coordinator: PetkitBLECoordinator) -> None:
         """Initialize the filter problem sensor."""
         super().__init__(coordinator)
-        device_id = coordinator.device.serial if coordinator.device.serial != "Uninitialized" else coordinator.address.replace(":", "")
+        device_id = coordinator.address.replace(":", "")
         self._attr_unique_id = f"{device_id}_filter_problem"
         self._attr_name = "Filter Problem"
         self._attr_icon = "mdi:air-filter"
@@ -81,7 +77,7 @@ class PetkitWaterMissingSensor(PetkitBinarySensorBase):
     def __init__(self, coordinator: PetkitBLECoordinator) -> None:
         """Initialize the water missing sensor."""
         super().__init__(coordinator)
-        device_id = coordinator.device.serial if coordinator.device.serial != "Uninitialized" else coordinator.address.replace(":", "")
+        device_id = coordinator.address.replace(":", "")
         self._attr_unique_id = f"{device_id}_water_missing"
         self._attr_name = "Water Missing"
         self._attr_icon = "mdi:water-alert"
@@ -100,7 +96,7 @@ class PetkitBreakdownSensor(PetkitBinarySensorBase):
     def __init__(self, coordinator: PetkitBLECoordinator) -> None:
         """Initialize the breakdown sensor."""
         super().__init__(coordinator)
-        device_id = coordinator.device.serial if coordinator.device.serial != "Uninitialized" else coordinator.address.replace(":", "")
+        device_id = coordinator.address.replace(":", "")
         self._attr_unique_id = f"{device_id}_breakdown"
         self._attr_name = "Breakdown"
         self._attr_icon = "mdi:alert-circle"
@@ -119,7 +115,7 @@ class PetkitRunningSensor(PetkitBinarySensorBase):
     def __init__(self, coordinator: PetkitBLECoordinator) -> None:
         """Initialize the running sensor."""
         super().__init__(coordinator)
-        device_id = coordinator.device.serial if coordinator.device.serial != "Uninitialized" else coordinator.address.replace(":", "")
+        device_id = coordinator.address.replace(":", "")
         self._attr_unique_id = f"{device_id}_running"
         self._attr_name = "Running"
         self._attr_icon = "mdi:play-circle"

@@ -46,35 +46,37 @@ async def async_setup_entry(
 class PetkitSensorBase(CoordinatorEntity[PetkitBLECoordinator], SensorEntity):
     """Base class for Petkit sensors."""
     
+    # Connection diagnostics stay available while the fountain is away, so you
+    # can see WHY it is away. Everything else goes unavailable when stale.
+    _always_available = False
+
     def __init__(self, coordinator: PetkitBLECoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        # Device info will be provided by the dynamic property
-    
+
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device info dynamically."""
-        # Use address as identifier if serial is not initialized yet
-        device_id = self.coordinator.device.serial if self.coordinator.device.serial != "Uninitialized" else self.coordinator.address
-        device_name = self.coordinator.device.name_readable if self.coordinator.device.name_readable != "Uninitialized" else "Water Fountain"
-        return {
-            "identifiers": {(DOMAIN, device_id)},
-            "name": device_name,
-            "manufacturer": "Petkit",
-            "model": self.coordinator.device.product_name or "Water Fountain",
-            "sw_version": str(self.coordinator.device.firmware) if self.coordinator.device.firmware else "Unknown",
-        }
-    
+        """Return device info (stable identifier, see coordinator)."""
+        return self.coordinator.device_info
+
+    @property
+    def available(self) -> bool:
+        """Entity availability follows the connection, not an update timer."""
+        return self._always_available or self.coordinator.is_available
+
     @property
     def name(self) -> str:
         """Return dynamic entity name."""
         # Return the sensor-specific name template (which no longer includes device name)
         return getattr(self, '_sensor_name_template', 'Unknown Sensor')
-    
+
     def _get_device_id(self) -> str:
-        """Get device ID for unique_id generation."""
-        if self.coordinator.device.serial != "Uninitialized":
-            return self.coordinator.device.serial
+        """Device id for unique_id generation: the address without colons.
+
+        This is what the original code produced in practice (the serial was
+        never known yet when entities were created), so existing entities keep
+        their unique ids.
+        """
         return self.coordinator.address.replace(":", "")
 
 class PetkitBatteryLevelSensor(PetkitSensorBase):
@@ -312,7 +314,8 @@ class PetkitConnectionStatusSensor(PetkitSensorBase):
     """Connection status sensor."""
     
     _attr_icon = "mdi:bluetooth-connect"
-    
+    _always_available = True
+
     def __init__(self, coordinator: PetkitBLECoordinator) -> None:
         """Initialize the connection status sensor."""
         super().__init__(coordinator)
@@ -330,6 +333,7 @@ class PetkitConnectionAttemptsSensor(PetkitSensorBase):
     _attr_icon = "mdi:counter"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_entity_registry_enabled_default = False
+    _always_available = True
     
     def __init__(self, coordinator: PetkitBLECoordinator) -> None:
         """Initialize the connection attempts sensor."""
@@ -348,6 +352,7 @@ class PetkitLastSeenSensor(PetkitSensorBase):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:clock-check-outline"
     _attr_entity_registry_enabled_default = False
+    _always_available = True
     
     def __init__(self, coordinator: PetkitBLECoordinator) -> None:
         """Initialize the last seen sensor."""

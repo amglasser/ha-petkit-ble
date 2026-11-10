@@ -11,8 +11,12 @@ DEFAULT_SCAN_INTERVAL = 30  # seconds
 DEFAULT_UPDATE_INTERVAL = 10  # seconds
 HEARTBEAT_INTERVAL = 60     # seconds
 
-# Device types
-SUPPORTED_DEVICES = ["W4", "W5", "CTW2"]
+# Entities go "unavailable" when the fountain has been silent for this long.
+# Short reconnects (a few seconds to minutes) keep showing the last values.
+STALE_AFTER_SECONDS = 600
+
+# Device types (matched against the advertised BLE name, e.g. "Petkit_CTW3_100")
+SUPPORTED_DEVICES = ["W4", "W5", "CTW2", "CTW3"]
 
 # Entity attributes
 ATTR_BATTERY = "battery"

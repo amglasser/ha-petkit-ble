@@ -11,6 +11,13 @@
       "bluetooth_confirm": {
         "title": "Confirm Petkit BLE Device",
         "description": "Do you want to set up {name} ({address})?"
+      },
+      "manual": {
+        "title": "Enter the fountain's Bluetooth address",
+        "description": "No Petkit fountain was found by Bluetooth discovery. Enter the MAC address (for example A4:C1:38:AA:BB:CC). It is stored in upper case.",
+        "data": {
+          "address": "MAC address"
+        }
       }
     },
     "error": {

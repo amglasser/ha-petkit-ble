@@ -10,6 +10,10 @@
 
 A Home Assistant integration for controlling Petkit W5 series water fountains via Bluetooth Low Energy (BLE). Control your pet's water fountain locally without cloud dependencies.
 
+> **Fork notice.** This is a maintained fork of [pdiegmann/ha-petkit-ble](https://github.com/pdiegmann/ha-petkit-ble)
+> (itself built on slespersen's PetkitW5BLEMQTT). It keeps the same integration domain (`petkit_ble`), entity ids and
+> unique ids, so it is a drop-in replacement. What changed in 0.4.0 is summarised in [CHANGES-FORK.md](CHANGES-FORK.md).
+
 ## Features
 
 - **Local Control**: No cloud connection required - all communication via BLE
@@ -29,6 +33,7 @@ A Home Assistant integration for controlling Petkit W5 series water fountains vi
 - **Petkit W4 Series**
 - **Petkit W5 Series** (Tested with Eversweet 2 Solo)
 - **Petkit CTW2 Series**
+- **Petkit CTW3 Series** (recognised; the protocol is assumed to match the W5 family. Use *Download diagnostics* if values look wrong)
 
 ## Installation
 
@@ -37,7 +42,7 @@ A Home Assistant integration for controlling Petkit W5 series water fountains vi
 1. Make sure [HACS](https://hacs.xyz/) is installed in your Home Assistant instance
 2. In HACS, go to "Integrations"
 3. Click the three dots in the top right corner and select "Custom repositories"
-4. Add this repository URL: `https://github.com/pdiegmann/ha-petkit-ble`
+4. Add this repository URL: `https://github.com/amglasser/ha-petkit-ble`
 5. Select "Integration" as the category
 6. Click "Add"
 7. Find "Petkit BLE Water Fountain" in the integration list and install it

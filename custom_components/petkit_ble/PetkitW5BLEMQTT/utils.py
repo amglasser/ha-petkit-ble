@@ -274,6 +274,10 @@ class Utils:
     # device.filter_percentage, device.smart_time_on, device.smart_time_off
     @staticmethod
     def calculate_remaining_filter_time(filter_percentage, time_on, time_off):
+        # In smart mode a device that reports time_on == 0 would otherwise
+        # raise ZeroDivisionError and the whole status frame would be lost.
+        if not time_on:
+            time_on, time_off = 1, 0
         return math.ceil(((filter_percentage * 30.0) * (time_on + time_off)) / time_on)
     
     @staticmethod
@@ -300,10 +304,25 @@ class Utils:
             213: {"name": "Petkit_W5N", "alias": "W5N", "product_name": "Eversweet Mini", "device_type": 14, "type_code": 3},
             214: {"name": "Petkit_W4X", "alias": "W4X", "product_name": "Eversweet 3 Pro", "device_type": 14, "type_code": 4},
             217: {"name": "Petkit_CTW2", "alias": "CTW2", "product_name": "Eversweet Solo 2", "device_type": 14, "type_code": 5},
-            228: {"name": "Petkit_W4XUVC", "alias": "W4X", "product_name": "Eversweet 3 Pro (UVC)", "device_type": 14, "type_code": 6}
+            228: {"name": "Petkit_W4XUVC", "alias": "W4X", "product_name": "Eversweet 3 Pro (UVC)", "device_type": 14, "type_code": 6},
+            # CTW3: identifier taken from the advertisement service data of a real unit
+            # (service data 38 A5 76 82 00 F7 -> last byte 0xF7 = 247).
+            # The command protocol is assumed to match the W5 family; this is unverified.
+            247: {"name": "Petkit_CTW3", "alias": "CTW3", "product_name": "Petkit CTW3", "device_type": 14, "type_code": 7},
         }
 
-        return device_mapping[device_integer_identifier]
+        try:
+            return device_mapping[device_integer_identifier]
+        except KeyError:
+            # Unknown model: fall back to a generic W5-family profile instead of
+            # failing the whole initialisation.
+            return {
+                "name": f"Petkit_Unknown_{device_integer_identifier}",
+                "alias": f"UNKNOWN{device_integer_identifier}",
+                "product_name": "Petkit Water Fountain",
+                "device_type": 14,
+                "type_code": 0,
+            }
         
     @staticmethod
     def decimal_to_time(decimal_time):

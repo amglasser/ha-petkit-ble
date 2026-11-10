@@ -8,31 +8,100 @@ class Commands:
         self.device = device
         self.logger = logger  # Use the centralized logger
         self.sequence = 0
-        
+        # Secret used by cmd 86 (sync). Overwritten by init_device() once the
+        # device id is known.
+        self.secret = [0, 0, 0, 0, 0, 0, 13, 37]
+
     def increment_sequence(self):
         self.sequence += 1
-        
+
         # If sequence is too large, we'll reset
         if self.sequence > 255:
             self.sequence = 0
-    
-    def init_device_data(self):
-        connectiondata = self.ble_manager.connectiondata[self.device.mac].details
-        self.device.status = {"rssi": connectiondata['props']['RSSI']}
-        
-        discovered_bytes = Utils.bytes_to_unsigned_integers(Utils.combine_byte_arrays(connectiondata['props']['ServiceData']))
-        device_integer_identifier = discovered_bytes[5]
 
-        self.logger.debug(f"Received ServiceData {discovered_bytes}")
-        
-        device_properties = Utils.get_device_properties(device_integer_identifier)
-        
+    def init_device_data(self, service_data=None, rssi=None):
+        """Identify the device model from the advertisement service data.
+
+        service_data is the dict of {uuid: bytes} from the advertisement. The
+        model identifier is the 6th byte of the concatenated service data.
+        Unknown or missing data falls back to a generic profile instead of
+        raising.
+        """
+        if rssi is not None:
+            self.device.status = {"rssi": rssi}
+
+        identifier = None
+        if service_data:
+            discovered_bytes = Utils.bytes_to_unsigned_integers(Utils.combine_byte_arrays(service_data))
+            self.logger.debug(f"Received ServiceData {discovered_bytes}")
+            if len(discovered_bytes) > 5:
+                identifier = discovered_bytes[5]
+
+        device_properties = Utils.get_device_properties(identifier if identifier is not None else -1)
+
         self.device.name = device_properties['name']
         self.device.name_readable = device_properties['name'].replace("_", " ") # Replace _ with space
+        self.device.alias = device_properties['alias']
         self.device.product_name = device_properties['product_name']
         self.device.device_type = device_properties['device_type']
         self.device.type_code = device_properties['type_code']
-    
+
+    async def _wait_for(self, predicate, timeout):
+        """Poll until predicate() is true or timeout (seconds) expires."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while loop.time() < deadline:
+            if predicate():
+                return True
+            await asyncio.sleep(0.1)
+        return bool(predicate())
+
+    async def init_session(self):
+        """Run the Petkit handshake on a fresh BLE connection.
+
+        Order follows the reference flow of the upstream library:
+        213 (identify) -> 73 (init) -> 86 (sync with secret) -> 84 (set time),
+        then read firmware, battery, state and config.
+        Raises TimeoutError when the device never answers the identify command.
+        """
+        # 1. Identify (device id + serial). Retry a few times, the first frame
+        #    after connecting is sometimes lost.
+        for _ in range(4):
+            await self.get_device_details()
+            if await self._wait_for(lambda: bool(self.device.device_id), 2.0):
+                break
+        if not self.device.device_id:
+            raise TimeoutError("Device did not answer the identify command (213)")
+
+        # 2. Init + sync. Retry once when the device does not confirm.
+        #    The confirmation belongs to the current session, so clear the old one.
+        self.device.device_initialized = 0
+        for attempt in range(2):
+            await self.init_device()
+            await asyncio.sleep(0.75)
+            await self.get_device_sync()
+            if await self._wait_for(lambda: bool(self.device.device_initialized), 3.0):
+                break
+            self.logger.debug(f"Device did not confirm sync (attempt {attempt + 1})")
+        if not self.device.device_initialized:
+            self.logger.warning("Device did not confirm the sync command; continuing anyway")
+
+        await asyncio.sleep(0.5)
+        await self.set_datetime()
+        await asyncio.sleep(0.5)
+
+        # 3. Read everything once so entities have values straight away.
+        await self.get_device_info()
+        await asyncio.sleep(0.5)
+        await self.get_battery()
+        await asyncio.sleep(0.5)
+        await self.get_device_state()
+        await asyncio.sleep(0.5)
+        await self.get_device_config()
+        await asyncio.sleep(0.5)
+        await self.get_device_update()
+        await asyncio.sleep(0.5)
+
     async def init_device_connection(self):
         # Basically this function secures the sequence
         # of which we're sending the commands.

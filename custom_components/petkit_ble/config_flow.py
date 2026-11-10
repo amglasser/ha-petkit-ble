@@ -27,7 +27,7 @@ class PetkitBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
         """Create the options flow."""
-        return OptionsFlowHandler(config_entry)
+        return OptionsFlowHandler()
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -40,7 +40,11 @@ class PetkitBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            address = user_input[CONF_ADDRESS]
+            if user_input[CONF_ADDRESS] == "manual":
+                return await self.async_step_manual()
+
+            # HA's Bluetooth stack is case sensitive: always upper case.
+            address = user_input[CONF_ADDRESS].strip().upper()
             await self.async_set_unique_id(format_mac(address))
             self._abort_if_unique_id_configured()
 
@@ -71,9 +75,6 @@ class PetkitBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
         device_options["manual"] = "Enter MAC address manually"
 
-        if user_input is not None and user_input[CONF_ADDRESS] == "manual":
-            return await self.async_step_manual()
-
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
@@ -91,7 +92,7 @@ class PetkitBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            address = user_input[CONF_ADDRESS]
+            address = user_input[CONF_ADDRESS].strip().upper()
             await self.async_set_unique_id(format_mac(address))
             self._abort_if_unique_id_configured()
 
@@ -124,7 +125,7 @@ class PetkitBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle bluetooth discovery."""
         device_name = discovery_info.name
-        address = discovery_info.address
+        address = discovery_info.address.upper()
         
         # Check if this is a supported Petkit device
         if not device_name or not any(
@@ -147,7 +148,7 @@ class PetkitBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Confirm bluetooth discovery."""
         if user_input is not None:
-            address = self.context["title_placeholders"]["address"]
+            address = self.context["title_placeholders"]["address"].upper()
             
             # Test connection if possible, but allow configuration even if test fails
             connection_tested = await self._test_connection(address)
@@ -217,9 +218,8 @@ class PetkitBLEConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle a option flow for Petkit BLE."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
+    # self.config_entry is provided by Home Assistant (read-only property).
+    # Assigning it here, as older code did, raises AttributeError on current versions.
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

@@ -3,23 +3,24 @@
   "name": "Petkit BLE Water Fountain",
   "bluetooth": [
     {
+      "local_name": "Petkit_*",
       "connectable": true
     }
   ],
   "codeowners": [
-    "@pdiegmann"
+    "@amglasser"
   ],
   "config_flow": true,
   "dependencies": [
     "bluetooth_adapters"
   ],
-  "documentation": "https://github.com/pdiegmann/ha-petkit-ble",
+  "documentation": "https://github.com/amglasser/ha-petkit-ble",
   "integration_type": "device",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/pdiegmann/ha-petkit-ble/issues",
+  "issue_tracker": "https://github.com/amglasser/ha-petkit-ble/issues",
   "requirements": [
     "bleak>=1.0.1",
     "bleak-retry-connector>=3.0.0"
   ],
-  "version": "0.3.1"
+  "version": "0.4.0"
 }
