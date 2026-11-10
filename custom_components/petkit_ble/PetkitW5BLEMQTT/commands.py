@@ -66,11 +66,16 @@ class Commands:
         """
         # 1. Identify (device id + serial). Retry a few times, the first frame
         #    after connecting is sometimes lost.
+        # A device may legitimately report an all-zero id, so "answered" means
+        # either a non-zero id or a serial number was parsed from the reply.
+        def identified() -> bool:
+            return bool(self.device.device_id) or self.device.serial not in ("Uninitialized", 0, "")
+
         for _ in range(4):
             await self.get_device_details()
-            if await self._wait_for(lambda: bool(self.device.device_id), 2.0):
+            if await self._wait_for(identified, 2.0):
                 break
-        if not self.device.device_id:
+        if not identified():
             raise TimeoutError("Device did not answer the identify command (213)")
 
         # 2. Init + sync. Retry once when the device does not confirm.

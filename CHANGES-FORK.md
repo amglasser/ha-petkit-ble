@@ -40,3 +40,7 @@ reconnect until it was power cycled. Root causes found in the upstream code:
 - Test suite with a fake fountain (`pytest`).
 
 Entity ids and unique ids are unchanged.
+
+## 0.4.1
+- Handshake no longer treats an all-zero device id as "no answer" to the identify command (seen on a real CTW3); it now accepts a serial number as proof the device replied.
+- A failed handshake now logs the last raw notifications at WARNING level so it can be diagnosed from the HA log without a diagnostics download.

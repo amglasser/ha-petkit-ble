@@ -163,3 +163,17 @@ async def test_queue_cannot_block_commands_while_disconnected(make_coordinator, 
     for _ in range(200):
         await asyncio.wait_for(c.adapter.message_producer(b"\xfa\xfc\xfd"), 0.5)
     assert c.adapter.queue.qsize() == 0
+
+
+async def test_all_zero_device_id_still_completes_handshake(make_coordinator, fountain):
+    """Seen on a real CTW3: the identify reply parsed to device_id 0, which the first
+    version of the handshake mistook for 'no answer' and retried forever."""
+    fountain.zero_id = True
+    c = await make_coordinator()
+    await c.async_start()
+    try:
+        assert await wait_until(lambda: c._session_ready, timeout=8), c.last_session_error
+        assert c.device.device_id == 0
+        assert c.device.serial != "Uninitialized"
+    finally:
+        await c.async_shutdown()

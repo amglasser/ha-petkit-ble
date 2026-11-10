@@ -65,7 +65,10 @@ class FakeClient:
         if self.fountain.silent or cmd in self.fountain.ignore_cmds:
             return
         if cmd in RESPONSES:
-            await self.fountain.deliver(self, frame(cmd, RESPONSES[cmd]))
+            payload = RESPONSES[cmd]
+            if cmd == 213 and self.fountain.zero_id:
+                payload = [0, 0] + [0] * 6 + [ord(c) for c in SERIAL]
+            await self.fountain.deliver(self, frame(cmd, payload))
 
     def remote_drop(self) -> None:
         """The fountain (or the radio) ends the link."""
@@ -85,6 +88,7 @@ class FakeFountain:
         self.commands_seen: list[int] = []
         self.fragment_size: int | None = None  # simulate a tiny MTU
         self.visible = True
+        self.zero_id = False  # device reports an all-zero device id
 
     @property
     def current(self) -> FakeClient:

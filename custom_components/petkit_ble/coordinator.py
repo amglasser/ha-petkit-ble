@@ -247,7 +247,12 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
             raise
         except Exception as err:  # noqa: BLE001
             self.last_session_error = f"Handshake failed: {type(err).__name__}: {err}"
-            _LOGGER.warning("%s (will retry)", self.last_session_error)
+            # Include the last raw notifications so a failure can be diagnosed from the log alone.
+            _LOGGER.warning(
+                "%s (will retry). Last raw notifications: %s",
+                self.last_session_error,
+                [raw for _, raw in list(self.adapter.recent_raw)[-6:]] or "none received",
+            )
             await self.adapter.disconnect()
             self.async_update_listeners()
             return False
