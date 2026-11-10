@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 import time
 from collections import deque
 from enum import Enum
@@ -48,7 +49,11 @@ FRAME_HEADER = b"\xfa\xfc\xfd"
 FRAME_END = 0xFB
 MAX_FRAME_BUFFER = 512
 
-CONNECT_TIMEOUT = 45.0  # hard upper bound for one establish_connection() call
+# Hard upper bound for one establish_connection() call. It must be longer than
+# bleak-retry-connector's own retries: cancelling it half way through a connect
+# can leave the link open inside BlueZ and the fountain then stops advertising.
+CONNECT_TIMEOUT = 120.0
+STALE_RELEASE_INTERVAL = 30.0
 WRITE_TIMEOUT = 10.0
 DISCONNECT_TIMEOUT = 10.0
 
@@ -96,6 +101,8 @@ class HABluetoothAdapter:
         self.recent_raw: deque[tuple[str, str]] = deque(maxlen=40)
         self.parse_errors = 0
         self.char_info = ""
+        self._last_stale_release = 0.0
+        self._startup_release_done = False
         self.last_write_error: str | None = None
         self._failed_writes = 0
         self.connect_count = 0
@@ -156,8 +163,18 @@ class HABluetoothAdapter:
             # otherwise the fountain stays "occupied" and never advertises.
             await self._drop_client()
 
+            # A link left over from a previous Home Assistant process (or from a
+            # connect attempt that was interrupted) makes the fountain stop
+            # advertising and hides it from the scanner. Release it once at
+            # startup, and again (rate limited) whenever the fountain is not
+            # visible.
+            if not self._startup_release_done:
+                self._startup_release_done = True
+                await self._release_stale_bluez_link()
+
             ble_device = self._current_ble_device()
             if ble_device is None or not self.ble_device_present():
+                await self._release_stale_bluez_link(rate_limited=True)
                 self._register_failure(
                     "Fountain is not visible to any Bluetooth adapter or proxy"
                 )
@@ -223,6 +240,55 @@ class HABluetoothAdapter:
             await self._drop_client()
             self._drain_queue()
             self._set_status(ConnectionStatus.DISCONNECTED)
+
+    async def _release_stale_bluez_link(self, rate_limited: bool = False) -> None:
+        """Ask BlueZ to drop any connection it still holds to the fountain.
+
+        Best effort and silent on failure (no D-Bus, no BlueZ, not Linux, no
+        such device, not connected). Only called while this adapter has no
+        client of its own, so it cannot cut a healthy session.
+        """
+        now = time.monotonic()
+        if rate_limited and now - self._last_stale_release < STALE_RELEASE_INTERVAL:
+            return
+        self._last_stale_release = now
+        if sys.platform != "linux":
+            return
+        try:
+            from dbus_fast import BusType, Message, MessageType
+            from dbus_fast.aio import MessageBus
+        except ImportError:
+            return
+        bus = None
+        try:
+            bus = await asyncio.wait_for(MessageBus(bus_type=BusType.SYSTEM).connect(), 5)
+            for hci in ("hci0", "hci1"):
+                reply = await asyncio.wait_for(
+                    bus.call(
+                        Message(
+                            destination="org.bluez",
+                            path=f"/org/bluez/{hci}/dev_{self.address.replace(':', '_')}",
+                            interface="org.bluez.Device1",
+                            member="Disconnect",
+                        )
+                    ),
+                    10,
+                )
+                if reply.message_type == MessageType.METHOD_RETURN:
+                    self.logger.warning(
+                        "Released a stale Bluetooth link to %s held by BlueZ (%s)", self.address, hci
+                    )
+                    break
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            self.logger.debug("No stale Bluetooth link released: %s", err)
+        finally:
+            if bus is not None:
+                try:
+                    bus.disconnect()
+                except Exception:  # noqa: BLE001
+                    pass
 
     async def _drop_client(self) -> None:
         """Disconnect and forget the current client. Never raises.

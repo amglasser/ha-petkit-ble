@@ -69,6 +69,16 @@ def fountain(monkeypatch):
         ),
     )
 
+    f.stale_release_calls = 0
+
+    async def fake_release(self, rate_limited=False):
+        f.stale_release_calls += 1
+
+    monkeypatch.setattr(
+        "custom_components.petkit_ble.ha_bluetooth_adapter.HABluetoothAdapter._release_stale_bluez_link",
+        fake_release,
+    )
+
     def register(hass, cb, matcher, mode):
         callbacks.append(cb)
         return lambda: callbacks.remove(cb) if cb in callbacks else None

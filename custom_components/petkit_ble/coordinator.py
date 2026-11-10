@@ -17,7 +17,8 @@ from typing import Any
 
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -98,6 +99,7 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
         self._supervisor_task: asyncio.Task | None = None
         self._consumer_task: asyncio.Task | None = None
         self._unsub_advertisements = None
+        self._unsub_stop = None
 
         self._wake = asyncio.Event()  # poll now / link lost / shutting down
         self._advertised = asyncio.Event()  # fountain advertisement seen
@@ -126,6 +128,12 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
             ),
             bluetooth.BluetoothScanningMode.ACTIVE,
         )
+        # Home Assistant does NOT unload integrations when it stops or restarts.
+        # Without this the BLE link stays open inside BlueZ across the restart,
+        # the fountain keeps its connection and stops advertising.
+        self._unsub_stop = self.hass.bus.async_listen_once(
+            EVENT_HOMEASSISTANT_STOP, self._async_on_ha_stop
+        )
         self._consumer_task = self.hass.async_create_background_task(
             self.adapter.message_consumer(), f"{DOMAIN} command writer {self.address}"
         )
@@ -133,8 +141,16 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
             self._supervisor(), f"{DOMAIN} supervisor {self.address}"
         )
 
+    async def _async_on_ha_stop(self, event: Event) -> None:
+        """Home Assistant is stopping: release the fountain before the process exits."""
+        self._unsub_stop = None
+        await self.async_shutdown()
+
     async def async_shutdown(self) -> None:
         """Stop everything and release the fountain. Safe to call twice."""
+        if getattr(self, "_unsub_stop", None) is not None:
+            self._unsub_stop()
+            self._unsub_stop = None
         self._stopping = True
         self._wake.set()
         self._advertised.set()

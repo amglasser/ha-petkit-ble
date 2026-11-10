@@ -203,3 +203,38 @@ async def test_writes_prefer_write_without_response(make_coordinator, fountain):
         assert fountain.current.response_modes[0] is False
     finally:
         await c.async_shutdown()
+
+
+async def test_home_assistant_stop_releases_the_link(make_coordinator, fountain, hass):
+    """HA does not unload integrations on restart; the fountain must be released on STOP."""
+    from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+
+    c = await make_coordinator()
+    await c.async_start()
+    assert await wait_until(lambda: c._session_ready, timeout=8), c.last_session_error
+    client = fountain.current
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+    assert await wait_until(lambda: client.disconnect_calls >= 1), "link not released on HA stop"
+    assert not client.is_connected
+
+
+async def test_stale_link_is_released_before_first_connect(make_coordinator, fountain):
+    """A link left over from a previous process hides the fountain; it is cleared at startup."""
+    c = await make_coordinator()
+    await c.async_start()
+    try:
+        assert await wait_until(lambda: c._session_ready, timeout=8), c.last_session_error
+        assert fountain.stale_release_calls >= 1
+    finally:
+        await c.async_shutdown()
+
+
+async def test_stale_link_release_is_tried_when_fountain_not_visible(make_coordinator, fountain):
+    fountain.visible = False
+    c = await make_coordinator()
+    await c.async_start()
+    try:
+        await asyncio.sleep(0.3)
+        assert fountain.stale_release_calls >= 2  # once at startup, once because it is invisible
+    finally:
+        await c.async_shutdown()

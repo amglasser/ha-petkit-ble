@@ -59,3 +59,8 @@ Entity ids and unique ids are unchanged.
 - Writes prefer write-without-response (the CTW3 rejects write-with-response with ATT "Unlikely Error").
 - CTW3 mode command uses [power, suspend, mode]; `set_device_config` is refused on the CTW3 until its 12 byte layout is implemented.
 - Removed the temporary frame survey log.
+
+## 0.4.5
+- Root cause of "fountain unreachable after every Home Assistant restart": Home Assistant does not unload integrations on stop/restart, so the BLE link was never closed. The link stayed open inside BlueZ, the fountain kept its connection and stopped advertising. The coordinator now releases the fountain on EVENT_HOMEASSISTANT_STOP.
+- At startup (and, rate limited, whenever the fountain is not visible) the integration asks BlueZ over D-Bus to drop any stale connection to the fountain (best effort, silent if unavailable). Logged at WARNING when a stale link was actually released.
+- Connect timeout raised from 45 s to 120 s so a connect in progress is not cancelled half way (which can also leave the link open).
