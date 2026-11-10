@@ -207,6 +207,13 @@ Device class manages three categories of state:
 - **Config**: Device settings (smart mode timings, LED settings, DND settings)
 - **Info**: Device information (firmware, serial, product name)
 
+### Filter reset (new filter installed)
+
+- Service `petkit_ble.reset_filter` (see `services.yaml`) sends command 222 with data `[0]`, which resets the filter life indicator on the fountain. It can be called from Developer Tools → Actions, a dashboard button or an automation.
+- Written for the W5. **Not yet verified on the CTW3** (as of 0.4.3). After the first real filter change, check that `sensor.water_fountain_filter_remaining` returns to ~100%.
+- The CTW3 payload layout for the filter value is still being decoded (see the temporary "Frame survey" log in 0.4.3), so the sensor value itself may be wrong until that is done.
+- The fountain reports its firmware version (command 200) but there is no known BLE way to check for or install firmware updates. That is done through the Petkit phone app and Petkit's cloud; do not try to implement it without a published protocol, because a bad transfer could brick the device. After a firmware update the fountain may need a power cycle before Home Assistant can reconnect.
+
 ### Data Processing
 
 - Processes BLE notifications through EventHandlers
