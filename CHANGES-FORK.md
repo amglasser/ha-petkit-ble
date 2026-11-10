@@ -35,6 +35,7 @@ reconnect until it was power cycled. Root causes found in the upstream code:
 - Address is stored and used in upper case.
 - Manifest matches on the `Petkit_*` name instead of every connectable device.
 - Diagnostics download (raw frames) to help decode models whose protocol is not fully known.
+- "Filter Remaining" sensor fixed: it computed `100 - fraction` and so always showed ~99-100 %. It now shows the fraction of filter life remaining (assumption based on how the days-left formula uses it; verify against the Petkit app).
 - Removed the unused bundled `BLEManager`/`Logger`.
 - Test suite with a fake fountain (`pytest`).
 

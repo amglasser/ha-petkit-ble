@@ -96,6 +96,7 @@ def make_coordinator(hass, fountain):
             options={"update_interval": poll_interval},
             title="Petkit Water Fountain",
             domain="petkit_ble",
+            async_on_unload=lambda cb: None,
         )
         coordinator = PetkitBLECoordinator(hass, entry)  # type: ignore[arg-type]
         created.append(coordinator)
