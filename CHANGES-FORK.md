@@ -44,3 +44,8 @@ Entity ids and unique ids are unchanged.
 ## 0.4.1
 - Handshake no longer treats an all-zero device id as "no answer" to the identify command (seen on a real CTW3); it now accepts a serial number as proof the device replied.
 - A failed handshake now logs the last raw notifications at WARNING level so it can be diagnosed from the HA log without a diagnostics download.
+
+## 0.4.2
+- A real CTW3 rejected its first command with ATT "Unlikely Error"; the link was then dropped and the fountain stopped advertising. GATT write errors on a live link are now retried (with a last-resort write-without-response attempt) and the link is only dropped after several failed writes in a row or when it is really gone.
+- 1 s settle delay after enabling notifications, before the first command.
+- GATT characteristic properties and MTU are logged on connect and shown in diagnostics.

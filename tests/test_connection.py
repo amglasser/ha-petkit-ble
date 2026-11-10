@@ -177,3 +177,17 @@ async def test_all_zero_device_id_still_completes_handshake(make_coordinator, fo
         assert c.device.serial != "Uninitialized"
     finally:
         await c.async_shutdown()
+
+
+async def test_transient_gatt_write_error_does_not_drop_the_link(make_coordinator, fountain):
+    """A real CTW3 answered its first command with ATT 'Unlikely Error'. The link was
+    then dropped and the fountain stopped advertising until power cycled."""
+    fountain.transient_write_failures = 2
+    c = await make_coordinator()
+    await c.async_start()
+    try:
+        assert await wait_until(lambda: c._session_ready, timeout=8), c.last_session_error
+        assert len(fountain.clients) == 1, "link was dropped after a transient write error"
+        assert fountain.current.disconnect_calls == 0
+    finally:
+        await c.async_shutdown()

@@ -249,8 +249,10 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
             self.last_session_error = f"Handshake failed: {type(err).__name__}: {err}"
             # Include the last raw notifications so a failure can be diagnosed from the log alone.
             _LOGGER.warning(
-                "%s (will retry). Last raw notifications: %s",
+                "%s (will retry). GATT: %s. Last write error: %s. Last raw notifications: %s",
                 self.last_session_error,
+                self.adapter.char_info,
+                self.adapter.last_write_error,
                 [raw for _, raw in list(self.adapter.recent_raw)[-6:]] or "none received",
             )
             await self.adapter.disconnect()

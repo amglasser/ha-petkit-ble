@@ -36,6 +36,14 @@ from .PetkitW5BLEMQTT.constants import Constants
 
 _LOGGER = logging.getLogger(__name__)
 
+# Seconds to let the fountain settle after notifications are enabled. A real
+# CTW3 answered the very first command with ATT "Unlikely Error" (0x0E).
+SETTLE_AFTER_NOTIFY = 1.0
+WRITE_ATTEMPTS = 3
+WRITE_RETRY_DELAY = 0.6
+# Consecutive failed writes (each already retried) before the link is dropped.
+MAX_FAILED_WRITES = 3
+
 FRAME_HEADER = b"\xfa\xfc\xfd"
 FRAME_END = 0xFB
 MAX_FRAME_BUFFER = 512
@@ -87,6 +95,9 @@ class HABluetoothAdapter:
         self.last_frames: dict[int, dict[str, Any]] = {}
         self.recent_raw: deque[tuple[str, str]] = deque(maxlen=40)
         self.parse_errors = 0
+        self.char_info = ""
+        self.last_write_error: str | None = None
+        self._failed_writes = 0
         self.connect_count = 0
         self.disconnect_count = 0
 
@@ -189,6 +200,15 @@ class HABluetoothAdapter:
                 self._register_failure(f"Could not start notifications: {err}")
                 return False
 
+            self.char_info = self._describe_characteristics(client)
+            self._failed_writes = 0
+            self.last_write_error = None
+            self.logger.warning("Connected to %s; GATT: %s", self.address, self.char_info)
+            await asyncio.sleep(SETTLE_AFTER_NOTIFY)
+            if self._client is not client or not client.is_connected:
+                self._register_failure("Link dropped right after connecting")
+                return False
+
             self._connection_attempts = 0
             self._connection_error = None
             self.connect_count += 1
@@ -266,27 +286,74 @@ class HABluetoothAdapter:
     # ------------------------------------------------------------------
     # I/O
     # ------------------------------------------------------------------
+    @staticmethod
+    def _describe_characteristics(client: Any) -> str:
+        """Properties of the two Petkit characteristics, for diagnosing write problems."""
+        parts = []
+        for name, uuid in (("write", Constants.WRITE_UUID), ("read", Constants.READ_UUID)):
+            try:
+                char = client.services.get_characteristic(uuid)
+                parts.append(f"{name}={sorted(char.properties) if char else 'missing'}")
+            except Exception as err:  # noqa: BLE001
+                parts.append(f"{name}=unknown({type(err).__name__})")
+        try:
+            parts.append(f"mtu={client.mtu_size}")
+        except Exception:  # noqa: BLE001
+            pass
+        return ", ".join(parts)
+
     async def write(self, data: bytes) -> bool:
-        """Write one command frame. On failure the link is released."""
+        """Write one command frame.
+
+        A GATT error on a link that is still up is retried (the fountain
+        sometimes answers "Unlikely Error" when it is busy) and the link is
+        only released after several operations in a row failed or as soon as
+        the link itself is gone.
+        """
         client = self._client
         if client is None:
             return False
         if not client.is_connected:
             await self._invalidate(client)
             return False
-        try:
-            await asyncio.wait_for(
-                client.write_gatt_char(Constants.WRITE_UUID, data),
-                timeout=WRITE_TIMEOUT,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as err:  # noqa: BLE001
-            self.logger.warning("Write to %s failed: %s", self.address, err)
+
+        last_err: Exception | None = None
+        for attempt in range(WRITE_ATTEMPTS):
+            # Last resort: flip between write-with-response / without-response
+            response: bool | None = None
+            if attempt == WRITE_ATTEMPTS - 1 and "write-without-response" in self.char_info:
+                response = False
+            try:
+                if response is None:
+                    coro = client.write_gatt_char(Constants.WRITE_UUID, data)
+                else:
+                    coro = client.write_gatt_char(Constants.WRITE_UUID, data, response=response)
+                await asyncio.wait_for(coro, timeout=WRITE_TIMEOUT)
+            except asyncio.CancelledError:
+                raise
+            except Exception as err:  # noqa: BLE001
+                last_err = err
+                if self._client is not client or not client.is_connected:
+                    break  # the link itself is gone, retrying is pointless
+                await asyncio.sleep(WRITE_RETRY_DELAY * (attempt + 1))
+                continue
+            self._failed_writes = 0
+            self._update_last_seen()
+            return True
+
+        self._failed_writes += 1
+        self.last_write_error = f"{type(last_err).__name__}: {last_err}"
+        self.logger.warning(
+            "Write to %s failed (cmd %s, %s consecutive): %s [GATT: %s]",
+            self.address,
+            data[3] if len(data) > 3 else "?",
+            self._failed_writes,
+            self.last_write_error,
+            self.char_info,
+        )
+        if self._client is not client or not client.is_connected or self._failed_writes >= MAX_FAILED_WRITES:
             await self._invalidate(client)
-            return False
-        self._update_last_seen()
-        return True
+        return False
 
     async def message_producer(self, message: bytes) -> None:
         """Queue a command frame. Dropped silently when not connected."""

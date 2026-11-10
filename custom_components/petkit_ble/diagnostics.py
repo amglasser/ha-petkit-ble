@@ -53,6 +53,8 @@ async def async_get_config_entry_diagnostics(
             "last_error": adapter.connection_error,
             "last_session_error": coordinator.last_session_error,
             "last_seen": adapter.last_seen,
+            "gatt": adapter.char_info,
+            "last_write_error": adapter.last_write_error,
             "connects": adapter.connect_count,
             "disconnects": adapter.disconnect_count,
             "frame_parse_errors": adapter.parse_errors,

@@ -56,6 +56,9 @@ class FakeClient:
     async def write_gatt_char(self, uuid, data):
         if self.fountain.fail_writes:
             raise OSError("simulated write failure")
+        if self.fountain.transient_write_failures > 0:
+            self.fountain.transient_write_failures -= 1
+            raise OSError("GATT Protocol Error: Unlikely Error")
         if not self.is_connected:
             raise OSError("not connected")
         data = bytes(data)
@@ -88,6 +91,7 @@ class FakeFountain:
         self.commands_seen: list[int] = []
         self.fragment_size: int | None = None  # simulate a tiny MTU
         self.visible = True
+        self.transient_write_failures = 0  # next N writes fail, link stays up
         self.zero_id = False  # device reports an all-zero device id
 
     @property
