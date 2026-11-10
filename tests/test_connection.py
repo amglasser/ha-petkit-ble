@@ -238,3 +238,18 @@ async def test_stale_link_release_is_tried_when_fountain_not_visible(make_coordi
         assert fountain.stale_release_calls >= 2  # once at startup, once because it is invisible
     finally:
         await c.async_shutdown()
+
+
+async def test_failed_connect_reports_bluez_state_and_duration(make_coordinator, fountain):
+    """A failed connect must say what BlueZ saw, so the log alone explains it."""
+    fountain.fail_connect = True
+    c = await make_coordinator()
+    await c.async_start()
+    try:
+        assert await wait_until(lambda: c.adapter.connection_attempts >= 1, timeout=5)
+        error = c.adapter.connection_error
+        assert "simulated connect failure" in error
+        assert "ServicesResolved=False" in error
+        assert "after " in error
+    finally:
+        await c.async_shutdown()

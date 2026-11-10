@@ -183,6 +183,7 @@ class HABluetoothAdapter:
 
             self._set_status(ConnectionStatus.CONNECTING)
             self.logger.debug("Connecting to %s", self.address)
+            connect_started = time.monotonic()
             try:
                 client = await asyncio.wait_for(
                     establish_connection(
@@ -199,10 +200,17 @@ class HABluetoothAdapter:
                 self._set_status(ConnectionStatus.DISCONNECTED)
                 raise
             except Exception as err:  # noqa: BLE001 - bleak raises many types
+                # Record what BlueZ thinks of the fountain BEFORE clearing it,
+                # so the log shows whether the link was up (Connected) but GATT
+                # discovery never finished (ServicesResolved false).
+                bluez_state = await self._probe_bluez_state()
                 # A failed connect can leave a half-open link inside BlueZ,
                 # which makes the fountain stop advertising. Clear it.
                 await self._release_stale_bluez_link(rate_limited=True)
-                self._register_failure(f"{type(err).__name__}: {err}")
+                self._register_failure(
+                    f"{type(err).__name__}: {err} "
+                    f"[after {time.monotonic() - connect_started:.0f}s; BlueZ: {bluez_state}]"
+                )
                 return False
 
             self._client = client
@@ -294,6 +302,54 @@ class HABluetoothAdapter:
             self._stale_release_logs += 1
             level = logging.WARNING if self._stale_release_logs <= 4 else logging.DEBUG
             self.logger.log(level, "BlueZ stale-link check could not run: %s: %s", type(err).__name__, err)
+        finally:
+            if bus is not None:
+                try:
+                    bus.disconnect()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    async def _probe_bluez_state(self) -> str:
+        """Describe BlueZ's view of the fountain, for the log. Never raises."""
+        if sys.platform != "linux":
+            return "n/a"
+        try:
+            from dbus_fast import BusType, Message, MessageType
+            from dbus_fast.aio import MessageBus
+        except ImportError:
+            return "n/a"
+        bus = None
+        try:
+            bus = await asyncio.wait_for(MessageBus(bus_type=BusType.SYSTEM).connect(), 5)
+            found = []
+            for hci in ("hci0", "hci1"):
+                reply = await asyncio.wait_for(
+                    bus.call(
+                        Message(
+                            destination="org.bluez",
+                            path=f"/org/bluez/{hci}/dev_{self.address.replace(':', '_')}",
+                            interface="org.freedesktop.DBus.Properties",
+                            member="GetAll",
+                            signature="s",
+                            body=["org.bluez.Device1"],
+                        )
+                    ),
+                    5,
+                )
+                if reply.message_type != MessageType.METHOD_RETURN:
+                    continue
+                props = {k: v.value for k, v in reply.body[0].items()}
+                found.append(
+                    f"{hci}: Connected={props.get('Connected')} "
+                    f"ServicesResolved={props.get('ServicesResolved')} "
+                    f"Paired={props.get('Paired')} RSSI={props.get('RSSI')} "
+                    f"AddressType={props.get('AddressType')}"
+                )
+            return "; ".join(found) or "no device object"
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:  # noqa: BLE001
+            return f"probe failed: {type(err).__name__}: {err}"
         finally:
             if bus is not None:
                 try:

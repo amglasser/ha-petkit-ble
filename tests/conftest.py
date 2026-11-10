@@ -79,6 +79,14 @@ def fountain(monkeypatch):
         fake_release,
     )
 
+    async def fake_probe(self):
+        return "hci0: Connected=True ServicesResolved=False"
+
+    monkeypatch.setattr(
+        "custom_components.petkit_ble.ha_bluetooth_adapter.HABluetoothAdapter._probe_bluez_state",
+        fake_probe,
+    )
+
     def register(hass, cb, matcher, mode):
         callbacks.append(cb)
         return lambda: callbacks.remove(cb) if cb in callbacks else None

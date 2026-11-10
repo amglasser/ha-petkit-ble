@@ -68,3 +68,9 @@ Entity ids and unique ids are unchanged.
 ## 0.4.6
 - The first 10 connect failures are all logged with their exact error (previously only the first).
 - A failed connect now triggers the stale-link release, and the first few BlueZ stale-link checks log their outcome at WARNING, so it is visible whether the D-Bus call works inside Home Assistant.
+
+## 0.4.7
+
+- Diagnostics only. A failed connect now logs how long it took and what BlueZ reports for the fountain
+  (`Connected`, `ServicesResolved`, `Paired`, `RSSI`), read just before the stale link is released. This tells
+  apart "the link comes up but GATT discovery never finishes" from "the fountain never accepts the link".
