@@ -49,3 +49,7 @@ Entity ids and unique ids are unchanged.
 - A real CTW3 rejected its first command with ATT "Unlikely Error"; the link was then dropped and the fountain stopped advertising. GATT write errors on a live link are now retried (with a last-resort write-without-response attempt) and the link is only dropped after several failed writes in a row or when it is really gone.
 - 1 s settle delay after enabling notifications, before the first command.
 - GATT characteristic properties and MTU are logged on connect and shown in diagnostics.
+
+## 0.4.3
+- Parsers tolerate the shorter CTW3 payloads (cmd 211 is 12 bytes, not 14) instead of raising IndexError.
+- Temporary "Frame survey" WARNING log: first frame of each command per HA run, to decode the CTW3 layout.

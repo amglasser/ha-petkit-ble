@@ -96,6 +96,7 @@ class HABluetoothAdapter:
         self.recent_raw: deque[tuple[str, str]] = deque(maxlen=40)
         self.parse_errors = 0
         self.char_info = ""
+        self._surveyed: set[int] = set()
         self.last_write_error: str | None = None
         self._failed_writes = 0
         self.connect_count = 0
@@ -422,6 +423,12 @@ class HABluetoothAdapter:
         frame = self._reassemble(raw)
         if frame is None:
             return
+        if frame[3] not in self._surveyed:
+            # Temporary protocol survey for the CTW3: the first frame of every
+            # command, once per Home Assistant run, so layouts can be decoded
+            # from the HA log without a diagnostics download.
+            self._surveyed.add(frame[3])
+            self.logger.warning("Frame survey cmd %s: %s", frame[3], frame.hex())
         self.last_frames[frame[3]] = {
             "time": dt_util.utcnow().isoformat(),
             "hex": frame.hex(),

@@ -1,5 +1,15 @@
 from .utils import Utils
 
+def _pad(data, length):
+    """Return `data` as a list padded with zeros to `length`.
+
+    The CTW3 sends shorter payloads than the W5 (its config reply is 12 bytes,
+    not 14). A short payload must degrade to zero defaults, not raise.
+    """
+    data = list(data)
+    return data + [0] * (length - len(data))
+
+
 class Parsers:
     # Get Battery Synchronization
     @staticmethod
@@ -32,6 +42,7 @@ class Parsers:
     # Get device state
     @staticmethod
     def device_state(data, alias):
+        data = _pad(data, 12)
         return {
             "power_status": data[0],
             "mode": data[1],
@@ -47,6 +58,7 @@ class Parsers:
     # Get device configuration
     @staticmethod
     def device_configuration(data, alias):
+        data = _pad(data, 14)
         led_light_time_on = Utils.bytes_to_short(data[4:6])
         led_light_time_off = Utils.bytes_to_short(data[6:8])
         do_not_disturb_time_on = Utils.bytes_to_short(data[9:11])
@@ -92,6 +104,7 @@ class Parsers:
     # Status
     @staticmethod
     def device_status(data, alias):
+        data = _pad(data, 30)
         mode = data[1]
         filter_percentage = Utils.byte_to_integer(data[10]) / 100
         smart_time_on = data[16]

@@ -37,3 +37,13 @@ def test_init_device_data_without_service_data_does_not_raise():
     cmds = Commands(ble_manager=None, device=device, logger=None)
     cmds.init_device_data(service_data=None, rssi=None)
     assert device.product_name == "Petkit Water Fountain"
+
+
+def test_ctw3_short_config_payload_does_not_raise():
+    """Real CTW3 cmd 211 reply: 12 data bytes (the W5 layout has 14)."""
+    from custom_components.petkit_ble.PetkitW5BLEMQTT.parsers import Parsers
+
+    data = bytes.fromhex("030300190e1001020000 0000".replace(" ", ""))
+    result = Parsers.device_configuration(data, "CTW3")
+    assert result["smart_time_on"] == 3
+    assert result["is_locked"] == 0
