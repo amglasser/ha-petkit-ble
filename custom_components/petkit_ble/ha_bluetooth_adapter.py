@@ -102,6 +102,7 @@ class HABluetoothAdapter:
         self.parse_errors = 0
         self.char_info = ""
         self._last_stale_release = 0.0
+        self._stale_release_logs = 0
         self._startup_release_done = False
         self.last_write_error: str | None = None
         self._failed_writes = 0
@@ -198,6 +199,9 @@ class HABluetoothAdapter:
                 self._set_status(ConnectionStatus.DISCONNECTED)
                 raise
             except Exception as err:  # noqa: BLE001 - bleak raises many types
+                # A failed connect can leave a half-open link inside BlueZ,
+                # which makes the fountain stop advertising. Clear it.
+                await self._release_stale_bluez_link(rate_limited=True)
                 self._register_failure(f"{type(err).__name__}: {err}")
                 return False
 
@@ -279,10 +283,17 @@ class HABluetoothAdapter:
                         "Released a stale Bluetooth link to %s held by BlueZ (%s)", self.address, hci
                     )
                     break
+                self._stale_release_logs += 1
+                if self._stale_release_logs <= 4:
+                    self.logger.warning(
+                        "BlueZ stale-link check on %s: %s", hci, getattr(reply, "error_name", reply.message_type)
+                    )
         except asyncio.CancelledError:
             raise
         except Exception as err:  # noqa: BLE001
-            self.logger.debug("No stale Bluetooth link released: %s", err)
+            self._stale_release_logs += 1
+            level = logging.WARNING if self._stale_release_logs <= 4 else logging.DEBUG
+            self.logger.log(level, "BlueZ stale-link check could not run: %s: %s", type(err).__name__, err)
         finally:
             if bus is not None:
                 try:
@@ -517,7 +528,7 @@ class HABluetoothAdapter:
         self._set_status(ConnectionStatus.RECONNECTING)
         # Log the first failure and then only every 10th, so a fountain that is
         # off for a day does not flood the log.
-        if self._connection_attempts == 1 or self._connection_attempts % 10 == 0:
+        if self._connection_attempts <= 10 or self._connection_attempts % 10 == 0:
             self.logger.warning(
                 "Connect to %s failed (attempt %d): %s",
                 self.address,

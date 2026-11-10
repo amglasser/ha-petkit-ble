@@ -64,3 +64,7 @@ Entity ids and unique ids are unchanged.
 - Root cause of "fountain unreachable after every Home Assistant restart": Home Assistant does not unload integrations on stop/restart, so the BLE link was never closed. The link stayed open inside BlueZ, the fountain kept its connection and stopped advertising. The coordinator now releases the fountain on EVENT_HOMEASSISTANT_STOP.
 - At startup (and, rate limited, whenever the fountain is not visible) the integration asks BlueZ over D-Bus to drop any stale connection to the fountain (best effort, silent if unavailable). Logged at WARNING when a stale link was actually released.
 - Connect timeout raised from 45 s to 120 s so a connect in progress is not cancelled half way (which can also leave the link open).
+
+## 0.4.6
+- The first 10 connect failures are all logged with their exact error (previously only the first).
+- A failed connect now triggers the stale-link release, and the first few BlueZ stale-link checks log their outcome at WARNING, so it is visible whether the D-Bus call works inside Home Assistant.
