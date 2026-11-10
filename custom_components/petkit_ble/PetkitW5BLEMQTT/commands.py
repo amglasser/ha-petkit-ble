@@ -318,6 +318,9 @@ class Commands:
         type = 1                            # Type is 1 for sending - 2 for receiving
         seq = self.sequence                 # Example sequence number
         data = [state, mode]                # State 1 for on, 0 for off - Mode 1 for normal, 2 for smart
+        if self.device.alias == "CTW3":
+            # CTW3 layout is [power, suspend, mode]; suspend 1 = pump running
+            data = [state, 1 if state else 0, mode]
         
         bytes = Utils.build_command(seq, cmd, type, data)
         await self.ble_manager.message_producer(bytes)

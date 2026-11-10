@@ -96,7 +96,6 @@ class HABluetoothAdapter:
         self.recent_raw: deque[tuple[str, str]] = deque(maxlen=40)
         self.parse_errors = 0
         self.char_info = ""
-        self._surveyed: set[int] = set()
         self.last_write_error: str | None = None
         self._failed_writes = 0
         self.connect_count = 0
@@ -320,10 +319,12 @@ class HABluetoothAdapter:
 
         last_err: Exception | None = None
         for attempt in range(WRITE_ATTEMPTS):
-            # Last resort: flip between write-with-response / without-response
+            # The fountain's write characteristic offers both modes, and it
+            # answers write-with-response with ATT "Unlikely Error" on a CTW3.
+            # Prefer write-without-response and alternate on retries.
             response: bool | None = None
-            if attempt == WRITE_ATTEMPTS - 1 and "write-without-response" in self.char_info:
-                response = False
+            if "write-without-response" in self.char_info:
+                response = False if attempt % 2 == 0 else None
             try:
                 if response is None:
                     coro = client.write_gatt_char(Constants.WRITE_UUID, data)
@@ -423,12 +424,6 @@ class HABluetoothAdapter:
         frame = self._reassemble(raw)
         if frame is None:
             return
-        if frame[3] not in self._surveyed:
-            # Temporary protocol survey for the CTW3: the first frame of every
-            # command, once per Home Assistant run, so layouts can be decoded
-            # from the HA log without a diagnostics download.
-            self._surveyed.add(frame[3])
-            self.logger.warning("Frame survey cmd %s: %s", frame[3], frame.hex())
         self.last_frames[frame[3]] = {
             "time": dt_util.utcnow().isoformat(),
             "hex": frame.hex(),

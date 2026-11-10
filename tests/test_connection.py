@@ -191,3 +191,15 @@ async def test_transient_gatt_write_error_does_not_drop_the_link(make_coordinato
         assert fountain.current.disconnect_calls == 0
     finally:
         await c.async_shutdown()
+
+
+async def test_writes_prefer_write_without_response(make_coordinator, fountain):
+    """The CTW3 rejects write-with-response with ATT 'Unlikely Error'."""
+    c = await make_coordinator()
+    await c.async_start()
+    try:
+        assert await wait_until(lambda: c._session_ready, timeout=8), c.last_session_error
+        assert fountain.current.response_modes
+        assert fountain.current.response_modes[0] is False
+    finally:
+        await c.async_shutdown()

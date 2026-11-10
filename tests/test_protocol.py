@@ -47,3 +47,48 @@ def test_ctw3_short_config_payload_does_not_raise():
     result = Parsers.device_configuration(data, "CTW3")
     assert result["smart_time_on"] == 3
     assert result["is_locked"] == 0
+
+
+# Raw replies captured from a real Petkit CTW3 (cmd data only, without frame header)
+CTW3_210 = bytes.fromhex("0101010100000000000000367b640100000053001569106964007f056705")
+CTW3_230 = bytes.fromhex(
+    "0101010100000000000000367b640100000053001569106964007f0567050303"
+    "00190e10010200000000"
+)
+
+
+def test_ctw3_state_decodes_real_frame():
+    from custom_components.petkit_ble.PetkitW5BLEMQTT.parsers import Parsers
+
+    r = Parsers.device_state(CTW3_210, "CTW3")
+    assert r["power_status"] == 1
+    assert r["mode"] == 1
+    assert r["warning_breakdown"] == 0
+    assert r["warning_water_missing"] == 0
+    assert r["warning_filter"] == 0
+    assert r["pump_runtime"] == 13947
+    assert r["pump_runtime_today"] == 83
+    assert r["filter_percentage"] == 1.0
+    assert r["running_status"] == 1
+    assert r["battery"] == 100
+    assert abs(r["voltage"] - 4.201) < 0.001
+    # 83 s of pumping today is about a litre, not tens of millions
+    assert 0.5 < r["purified_water_today"] < 2.0
+
+
+def test_ctw3_full_status_includes_config_and_filter_days():
+    from custom_components.petkit_ble.PetkitW5BLEMQTT.parsers import Parsers
+
+    r = Parsers.device_status(CTW3_230, "CTW3")
+    assert r["smart_time_on"] == 3 and r["smart_time_off"] == 3
+    assert r["led_switch"] == 1 and r["led_brightness"] == 2
+    assert r["is_locked"] == 0
+    assert r["filter_time_left"] == 60  # normal mode, 100 %
+
+
+def test_ctw3_transient_mode_zero_is_ignored():
+    from custom_components.petkit_ble.PetkitW5BLEMQTT.parsers import Parsers
+
+    frame = bytearray(CTW3_210)
+    frame[2] = 0
+    assert "mode" not in Parsers.device_state(bytes(frame), "CTW3")

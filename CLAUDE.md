@@ -211,7 +211,8 @@ Device class manages three categories of state:
 
 - Service `petkit_ble.reset_filter` (see `services.yaml`) sends command 222 with data `[0]`, which resets the filter life indicator on the fountain. It can be called from Developer Tools → Actions, a dashboard button or an automation.
 - Written for the W5. **Not yet verified on the CTW3** (as of 0.4.3). After the first real filter change, check that `sensor.water_fountain_filter_remaining` returns to ~100%.
-- The CTW3 payload layout for the filter value is still being decoded (see the temporary "Frame survey" log in 0.4.3), so the sensor value itself may be wrong until that is done.
+- CTW3 payloads are decoded since 0.4.4 (cmd 210 = 30 bytes, cmd 211 = 12 bytes, cmd 230 = both; see the layout comment in `parsers.py`). The CTW3 write characteristic offers write and write-without-response; the CTW3 rejects write-with-response with ATT "Unlikely Error", so the adapter prefers write-without-response.
+- CTW3 mode command (220) payload is `[power, suspend, mode]`. `set_device_config` is refused on the CTW3 until its 12 byte settings layout is implemented.
 - The fountain reports its firmware version (command 200) but there is no known BLE way to check for or install firmware updates. That is done through the Petkit phone app and Petkit's cloud; do not try to implement it without a published protocol, because a bad transfer could brick the device. After a firmware update the fountain may need a power cycle before Home Assistant can reconnect.
 
 ### Data Processing

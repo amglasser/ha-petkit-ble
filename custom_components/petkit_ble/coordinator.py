@@ -424,6 +424,10 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
     async def async_set_device_config(self, config_data: list) -> None:
         """Set device configuration."""
         self._require_connection()
+        if self.device.alias == "CTW3":
+            # The CTW3 uses a different 12 byte layout; sending the W5 layout
+            # could overwrite settings with wrong values.
+            raise HomeAssistantError("Changing the configuration is not yet supported for the CTW3")
         await self.commands.set_device_config(config_data)
 
     async def _async_update_data(self) -> None:

@@ -281,6 +281,13 @@ class Utils:
         return math.ceil(((filter_percentage * 30.0) * (time_on + time_off)) / time_on)
     
     @staticmethod
+    def calculate_filter_days_ctw3(filter_percentage, mode, time_on, time_off):
+        """Estimated filter days left on a CTW3 (60 days in normal mode, 30 in smart mode)."""
+        if mode != 2 or not time_on:
+            return math.ceil(filter_percentage * 60)
+        return math.ceil((filter_percentage * 30.0 * (time_on + time_off)) / time_on)
+
+    @staticmethod
     def calculate_values(mode, filter_percentage, smart_time_on, smart_time_off, alias, pump_runtime_today, pump_runtime):
         time_on = smart_time_on
         time_off = smart_time_off

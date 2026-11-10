@@ -53,3 +53,9 @@ Entity ids and unique ids are unchanged.
 ## 0.4.3
 - Parsers tolerate the shorter CTW3 payloads (cmd 211 is 12 bytes, not 14) instead of raising IndexError.
 - Temporary "Frame survey" WARNING log: first frame of each command per HA run, to decode the CTW3 layout.
+
+## 0.4.4
+- Proper CTW3 decoding for cmd 210/211/230 (verified on real frames; byte map cross-checked with the open source aavdberg/ha-petkit integration). Fixes wrong Filter Remaining, Water Purified Today, runtime and the false "Breakdown" state.
+- Writes prefer write-without-response (the CTW3 rejects write-with-response with ATT "Unlikely Error").
+- CTW3 mode command uses [power, suspend, mode]; `set_device_config` is refused on the CTW3 until its 12 byte layout is implemented.
+- Removed the temporary frame survey log.

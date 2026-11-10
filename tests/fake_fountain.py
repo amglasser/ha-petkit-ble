@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from custom_components.petkit_ble.PetkitW5BLEMQTT.utils import Utils
 
@@ -13,6 +14,10 @@ def frame(cmd: int, data: list[int], seq: int = 0) -> bytes:
 DEVICE_ID = [0x38, 0xA5, 0x76, 0x82, 0x00, 0xF7]
 SERIAL = "CTW3TESTSERIAL01"[:15]
 
+CTW3_STATE = [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0x1C, 0x20, 12, 1, 0, 0, 0, 83, 0, 0x15, 0x69,
+              0x0E, 0xD8, 80, 0, 0x7F, 0x05, 0x67, 0x05]
+CTW3_CONFIG = [3, 3, 0, 25, 0x0E, 0x10, 1, 2, 0, 0, 0, 0]
+
 RESPONSES: dict[int, list[int]] = {
     # identify: 2 pad bytes, 6 byte device id, 15 byte serial
     213: [0, 0] + DEVICE_ID + [ord(c) for c in SERIAL],
@@ -22,13 +27,14 @@ RESPONSES: dict[int, list[int]] = {
     200: [2, 5],
     # battery: 3.800 V, 80 %
     66: [0x0E, 0xD8, 80],
-    # state: power on, normal mode, no dnd, no warnings, runtime 7200 s, filter 12 %, running
-    210: [1, 1, 0, 0, 0, 0, 0, 0, 0x1C, 0x20, 12, 1],
-    # config (14 bytes)
-    211: [30, 60, 1, 80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    # full status (29+ bytes)
-    230: [1, 1, 0, 0, 0, 0, 0, 0, 0x1C, 0x20, 12, 1, 0, 0, 0x0E, 0x10, 30, 60, 1, 80,
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    # state (CTW3 layout, 30 bytes): power, suspend, mode normal, electric, dnd,
+    # breakdown, water missing, low battery, filter warning, runtime 7200 s,
+    # filter 12 %, running, today 83 s, detect, supply 5481 mV, battery 3800 mV, 80 %
+    210: CTW3_STATE,
+    # config (CTW3 layout, 12 bytes)
+    211: CTW3_CONFIG,
+    # full status = state + config
+    230: CTW3_STATE + CTW3_CONFIG,
 }
 
 
@@ -42,6 +48,11 @@ class FakeClient:
         self.notify_cb = None
         self.disconnect_calls = 0
         self.writes: list[bytes] = []
+        self.response_modes: list = []
+        self.mtu_size = 23
+        self.services = SimpleNamespace(
+            get_characteristic=lambda uuid: SimpleNamespace(properties=["write", "write-without-response"])
+        )
 
     async def start_notify(self, uuid, cb):
         self.notify_cb = cb
@@ -53,7 +64,8 @@ class FakeClient:
         self.disconnect_calls += 1
         self.is_connected = False
 
-    async def write_gatt_char(self, uuid, data):
+    async def write_gatt_char(self, uuid, data, response=None):
+        self.response_modes.append(response)
         if self.fountain.fail_writes:
             raise OSError("simulated write failure")
         if self.fountain.transient_write_failures > 0:

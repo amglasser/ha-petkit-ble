@@ -10,6 +10,11 @@ def _pad(data, length):
     return data + [0] * (length - len(data))
 
 
+def _is_ctw3(alias):
+    """The CTW3 sends different payload layouts than the W5 family."""
+    return alias == "CTW3"
+
+
 class Parsers:
     # Get Battery Synchronization
     @staticmethod
@@ -42,6 +47,8 @@ class Parsers:
     # Get device state
     @staticmethod
     def device_state(data, alias):
+        if _is_ctw3(alias):
+            return Parsers._ctw3_state(data)
         data = _pad(data, 12)
         return {
             "power_status": data[0],
@@ -58,6 +65,8 @@ class Parsers:
     # Get device configuration
     @staticmethod
     def device_configuration(data, alias):
+        if _is_ctw3(alias):
+            return Parsers._ctw3_config(data)
         data = _pad(data, 14)
         led_light_time_on = Utils.bytes_to_short(data[4:6])
         led_light_time_off = Utils.bytes_to_short(data[6:8])
@@ -89,6 +98,65 @@ class Parsers:
             "is_locked": data[13],
         }
         
+
+    # ------------------------------------------------------------------
+    # CTW3 layout. Verified against the raw frames of a real CTW3 (battery
+    # 4.2 V, filter 100 %) and against the byte map used by the open source
+    # aavdberg/ha-petkit integration.
+    #
+    # cmd 210 (30 bytes):
+    #   0 power  1 suspend  2 mode (1 normal, 2 smart)  3 electric status
+    #   4 dnd  5 breakdown  6 water missing  7 low battery  8 filter warning
+    #   9-12 pump runtime (s)  13 filter %  14 running  15-18 runtime today (s)
+    #   19 pet detected  20-21 supply mV  22-23 battery mV  24 battery %
+    # cmd 211 (12 bytes):
+    #   0 smart on  1 smart off  2-3 battery work  4-5 battery sleep
+    #   6 led switch  7 led brightness  8 dnd  9 child lock  10-11 inductive
+    # cmd 230 = the 30 byte state followed by the 12 byte config.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _ctw3_state(data):
+        data = _pad(data, 30)
+        pump_runtime = Utils.bytes_to_integer(data[9:13])
+        pump_runtime_today = Utils.bytes_to_integer(data[15:19])
+        filter_percentage = Utils.byte_to_integer(data[13]) / 100
+        battery_mv = int.from_bytes(bytes(data[22:24]), "big", signed=True)
+        result = {
+            "power_status": data[0],
+            "dnd_state": data[4],
+            "warning_breakdown": data[5],
+            "warning_water_missing": data[6],
+            "warning_filter": data[8],
+            "pump_runtime": pump_runtime,
+            "pump_runtime_today": pump_runtime_today,
+            "filter_percentage": filter_percentage,
+            "running_status": Utils.byte_to_integer(data[14]),
+            "battery": data[24],
+            "voltage": battery_mv / 1000.0,
+            "pump_runtime_readable": Utils.get_timestamp_days(pump_runtime),
+            "pump_runtime_today_readable": Utils.get_timestamp_hours(pump_runtime_today),
+            "purified_water": Utils.calculate_water_purified("CTW3", pump_runtime),
+            "purified_water_today": Utils.calculate_water_purified("CTW3", pump_runtime_today),
+            "energy_consumed": format(Utils.calculate_energy_usage("CTW3", pump_runtime), "f"),
+        }
+        # Mode 0 is reported transiently (e.g. during the smart-mode sleep phase):
+        # only accept the two real modes so the last known one is kept.
+        if data[2] in (1, 2):
+            result["mode"] = data[2]
+        return result
+
+    @staticmethod
+    def _ctw3_config(data):
+        data = _pad(data, 12)
+        return {
+            "smart_time_on": data[0],
+            "smart_time_off": data[1],
+            "led_switch": data[6],
+            "led_brightness": data[7],
+            "do_not_disturb_switch": data[8],
+            "is_locked": data[9],
+        }
+
     # Get device ID and serial
     @staticmethod
     def device_identifiers(data, alias):
@@ -104,6 +172,17 @@ class Parsers:
     # Status
     @staticmethod
     def device_status(data, alias):
+        if _is_ctw3(alias):
+            result = Parsers._ctw3_state(data)
+            if len(data) >= 40:
+                result.update(Parsers._ctw3_config(data[30:]))
+                result["filter_time_left"] = Utils.calculate_filter_days_ctw3(
+                    result["filter_percentage"],
+                    result.get("mode", 1),
+                    result["smart_time_on"],
+                    result["smart_time_off"],
+                )
+            return result
         data = _pad(data, 30)
         mode = data[1]
         filter_percentage = Utils.byte_to_integer(data[10]) / 100
