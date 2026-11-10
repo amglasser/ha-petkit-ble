@@ -74,3 +74,14 @@ Entity ids and unique ids are unchanged.
 - Diagnostics only. A failed connect now logs how long it took and what BlueZ reports for the fountain
   (`Connected`, `ServicesResolved`, `Paired`, `RSSI`), read just before the stale link is released. This tells
   apart "the link comes up but GATT discovery never finishes" from "the fountain never accepts the link".
+
+## 0.4.8
+
+- **The CTW3 was never recognised on a real unit.** It broadcasts its model byte as *manufacturer* data (company id
+  `0xC1A4`, payload `38 A5 76 82 00 F7`), but the integration only read *service* data. The model fell back to a
+  generic profile, so every CTW3 frame was decoded with the W5 layout: 36 million litres purified, filter 0 %,
+  breakdown on, 24 h pump runtime. The 0.4.4 decode was correct but never selected. The tests passed because the
+  fake advertisement used service data.
+- The model is now identified from service data, then manufacturer data, then the advertised name (`Petkit_CTW3_100`).
+- The identification result is logged at WARNING once per start, with the raw advertisement.
+- The test fixture now advertises like a real CTW3 (manufacturer data only), and a test pins the CTW3 alias.

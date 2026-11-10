@@ -14,7 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fake_fountain import FakeFountain  # noqa: E402
 
 ADDRESS = "A4:C1:38:A5:76:82"
-CTW3_SERVICE_DATA = {"0000fff0-0000-1000-8000-00805f9b34fb": bytes([0x38, 0xA5, 0x76, 0x82, 0x00, 0xF7])}
+# A real CTW3 broadcasts its model byte as MANUFACTURER data (company id 0xC1A4), not as service data.
+CTW3_MANUFACTURER_DATA = {0xC1A4: bytes([0x38, 0xA5, 0x76, 0x82, 0x00, 0xF7])}
 
 
 class FastAsyncio:
@@ -63,9 +64,9 @@ def fountain(monkeypatch):
             name="Petkit_CTW3_100",
             rssi=-62,
             source="hci0",
-            service_data=CTW3_SERVICE_DATA,
+            service_data={},
             service_uuids=[],
-            manufacturer_data={},
+            manufacturer_data=CTW3_MANUFACTURER_DATA,
         ),
     )
 

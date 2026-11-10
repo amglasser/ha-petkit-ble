@@ -92,3 +92,12 @@ def test_ctw3_transient_mode_zero_is_ignored():
     frame = bytearray(CTW3_210)
     frame[2] = 0
     assert "mode" not in Parsers.device_state(bytes(frame), "CTW3")
+
+
+def test_model_is_identified_from_name_when_advertisement_has_no_payload():
+    from custom_components.petkit_ble.PetkitW5BLEMQTT.utils import Utils
+
+    assert Utils.identifier_from_name("Petkit_CTW3_100") == 247
+    assert Utils.identifier_from_name("petkit_ctw2") == 217
+    assert Utils.identifier_from_name("Something_else") is None
+    assert Utils.identifier_from_name(None) is None

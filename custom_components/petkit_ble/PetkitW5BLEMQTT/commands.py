@@ -19,23 +19,29 @@ class Commands:
         if self.sequence > 255:
             self.sequence = 0
 
-    def init_device_data(self, service_data=None, rssi=None):
-        """Identify the device model from the advertisement service data.
+    def init_device_data(self, service_data=None, rssi=None, manufacturer_data=None, local_name=None):
+        """Identify the device model from the advertisement.
 
-        service_data is the dict of {uuid: bytes} from the advertisement. The
-        model identifier is the 6th byte of the concatenated service data.
-        Unknown or missing data falls back to a generic profile instead of
-        raising.
+        The model identifier is the 6th byte of the advertised payload. Older
+        models broadcast it as service data ({uuid: bytes}); the CTW3 broadcasts
+        it as manufacturer data ({company id: bytes}). Both are tried, then the
+        local name ("Petkit_CTW3_100"). Unknown or missing data falls back to a
+        generic profile instead of raising.
         """
         if rssi is not None:
             self.device.status = {"rssi": rssi}
 
         identifier = None
-        if service_data:
-            discovered_bytes = Utils.bytes_to_unsigned_integers(Utils.combine_byte_arrays(service_data))
-            self.logger.debug(f"Received ServiceData {discovered_bytes}")
+        for source_name, source in (("service data", service_data), ("manufacturer data", manufacturer_data)):
+            if not source:
+                continue
+            discovered_bytes = Utils.bytes_to_unsigned_integers(Utils.combine_byte_arrays(source))
+            self.logger.debug(f"Received {source_name} {discovered_bytes}")
             if len(discovered_bytes) > 5:
                 identifier = discovered_bytes[5]
+                break
+        if identifier is None and local_name:
+            identifier = Utils.identifier_from_name(local_name)
 
         device_properties = Utils.get_device_properties(identifier if identifier is not None else -1)
 

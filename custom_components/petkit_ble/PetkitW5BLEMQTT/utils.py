@@ -304,6 +304,23 @@ class Utils:
         return filter_time_left, water_purified, water_purified_today, energy_consumed
     
     @staticmethod
+    def identifier_from_name(local_name):
+        """Model identifier from the advertised name, e.g. "Petkit_CTW3_100" -> 247."""
+        name = (local_name or "").upper()
+        for prefix, identifier in (
+            ("PETKIT_CTW3", 247),
+            ("PETKIT_CTW2", 217),
+            ("PETKIT_W4XUVC", 228),
+            ("PETKIT_W4X", 214),
+            ("PETKIT_W5N", 213),
+            ("PETKIT_W5C", 205),
+            ("PETKIT_W5", 206),
+        ):
+            if name.startswith(prefix):
+                return identifier
+        return None
+
+    @staticmethod
     def get_device_properties(device_integer_identifier):
         device_mapping = {
             205: {"name": "Petkit_W5C", "alias": "W5C", "product_name": "Eversweet Mini", "device_type": 14, "type_code": 2},
@@ -312,9 +329,9 @@ class Utils:
             214: {"name": "Petkit_W4X", "alias": "W4X", "product_name": "Eversweet 3 Pro", "device_type": 14, "type_code": 4},
             217: {"name": "Petkit_CTW2", "alias": "CTW2", "product_name": "Eversweet Solo 2", "device_type": 14, "type_code": 5},
             228: {"name": "Petkit_W4XUVC", "alias": "W4X", "product_name": "Eversweet 3 Pro (UVC)", "device_type": 14, "type_code": 6},
-            # CTW3: identifier taken from the advertisement service data of a real unit
-            # (service data 38 A5 76 82 00 F7 -> last byte 0xF7 = 247).
-            # The command protocol is assumed to match the W5 family; this is unverified.
+            # CTW3: identifier taken from the advertisement of a real unit. It is broadcast as
+            # MANUFACTURER data (company id 0xC1A4, payload 38 A5 76 82 00 F7 -> last byte 0xF7 = 247),
+            # not as service data. The command layout differs from the W5 family (see parsers.py).
             247: {"name": "Petkit_CTW3", "alias": "CTW3", "product_name": "Petkit CTW3", "device_type": 14, "type_code": 7},
         }
 

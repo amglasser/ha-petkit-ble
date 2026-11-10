@@ -253,3 +253,20 @@ async def test_failed_connect_reports_bluez_state_and_duration(make_coordinator,
         assert "after " in error
     finally:
         await c.async_shutdown()
+
+
+async def test_ctw3_is_identified_from_manufacturer_data(make_coordinator, fountain):
+    """The CTW3 broadcasts its model byte as manufacturer data; service data is empty.
+
+    Missing this made the integration decode CTW3 frames with the W5 layout
+    (36 million litres purified, filter 0 %, breakdown on).
+    """
+    c = await make_coordinator()
+    await c.async_start()
+    try:
+        assert await wait_until(lambda: c._session_ready, timeout=8), c.last_session_error
+        assert c.device.alias == "CTW3"
+        assert c.device.product_name == "Petkit CTW3"
+        assert c._model_identified is True
+    finally:
+        await c.async_shutdown()

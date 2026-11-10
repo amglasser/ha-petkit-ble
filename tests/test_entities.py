@@ -56,7 +56,7 @@ async def test_diagnostics_contains_raw_frames(hass, make_coordinator, fountain)
         diag = await async_get_config_entry_diagnostics(hass, c.entry)
         assert diag["connection"]["is_connected"] is True
         assert "230" in diag["last_frames_by_cmd"]
-        assert diag["advertisement"]["service_data"]
+        assert diag["advertisement"]["manufacturer_data"]
         assert diag["entry"]["address"] == "**REDACTED**"
     finally:
         await c.async_shutdown()

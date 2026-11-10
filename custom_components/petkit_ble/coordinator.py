@@ -346,16 +346,26 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
             self.hass, self.address, connectable=True
         ) or self._last_service_info
         service_data = dict(info.service_data) if info and info.service_data else None
+        manufacturer_data = dict(info.manufacturer_data) if info and info.manufacturer_data else None
+        local_name = getattr(info, "name", None) if info else None
         self.commands.init_device_data(
-            service_data=service_data, rssi=info.rssi if info else None
+            service_data=service_data,
+            rssi=info.rssi if info else None,
+            manufacturer_data=manufacturer_data,
+            local_name=local_name,
         )
-        if service_data:
+        # Identified when the name or any advertised payload gave a known model.
+        if not str(self.device.alias).startswith(("UNKNOWN", "Uninitialized")):
             self._model_identified = True
-        _LOGGER.info(
-            "Identified %s (%s) from %s",
+        # Warning level on purpose: this decides how every frame is decoded, so it
+        # must be visible in the default log.
+        _LOGGER.warning(
+            "Identified %s (%s) from name=%s service_data=%s manufacturer_data=%s",
             self.device.product_name,
             self.device.alias,
-            {k: bytes(v).hex() for k, v in (service_data or {}).items()} or "no service data",
+            local_name,
+            {str(k): bytes(v).hex() for k, v in (service_data or {}).items()} or None,
+            {str(k): bytes(v).hex() for k, v in (manufacturer_data or {}).items()} or None,
         )
 
     @callback
