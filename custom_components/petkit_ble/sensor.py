@@ -1,6 +1,8 @@
 """Sensor platform for Petkit BLE integration."""
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -230,12 +232,18 @@ class PetkitPurifiedWaterSensor(PetkitSensorBase):
         """Initialize the purified water sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{self._get_device_id()}_purified_water"
-        self._sensor_name_template = "Total Water Purified"
+        self._sensor_name_template = "Total Water Purified (estimate)"
     
     @property
     def native_value(self) -> float | None:
         """Return the total purified water."""
         return self.coordinator.current_data.get("status", {}).get("purified_water")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Say plainly that this value is calculated, not measured by the fountain."""
+        return {"estimated": True, "basis": "pump runtime x assumed flow rate"}
+
 
 class PetkitPurifiedWaterTodaySensor(PetkitSensorBase):
     """Purified water today sensor."""
@@ -248,12 +256,18 @@ class PetkitPurifiedWaterTodaySensor(PetkitSensorBase):
         """Initialize the purified water today sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{self._get_device_id()}_purified_water_today"
-        self._sensor_name_template = "Water Purified Today"
+        self._sensor_name_template = "Water Purified Today (estimate)"
     
     @property
     def native_value(self) -> float | None:
         """Return today's purified water."""
         return self.coordinator.current_data.get("status", {}).get("purified_water_today")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Say plainly that this value is calculated, not measured by the fountain."""
+        return {"estimated": True, "basis": "pump runtime x assumed flow rate"}
+
 
 class PetkitEnergyConsumedSensor(PetkitSensorBase):
     """Energy consumed sensor."""
@@ -266,12 +280,18 @@ class PetkitEnergyConsumedSensor(PetkitSensorBase):
         """Initialize the energy consumed sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{self._get_device_id()}_energy_consumed"
-        self._sensor_name_template = "Energy Consumption"
+        self._sensor_name_template = "Energy Consumption (estimate)"
     
     @property
     def native_value(self) -> float | None:
         """Return the energy consumed."""
         return self.coordinator.current_data.get("status", {}).get("energy_consumed")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Say plainly that this value is calculated, not measured by the fountain."""
+        return {"estimated": True, "basis": "pump runtime x assumed power draw"}
+
 
 class PetkitRSSISensor(PetkitSensorBase):
     """RSSI sensor."""

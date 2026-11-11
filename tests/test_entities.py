@@ -68,3 +68,30 @@ def test_config_flow_module_and_options_flow_construct():
     # The original assigned the read-only config_entry in __init__; constructing must not raise
     OptionsFlowHandler()
     assert PetkitBLEConfigFlow.VERSION == 1
+
+
+async def test_derived_sensors_are_labelled_as_estimates(make_coordinator, fountain):
+    """Water and energy are calculated from pump runtime, not measured, and must say so.
+
+    The unique ids stay the same, so existing entities and dashboards are unaffected.
+    """
+    from custom_components.petkit_ble.sensor import (
+        PetkitEnergyConsumedSensor,
+        PetkitPurifiedWaterSensor,
+        PetkitPurifiedWaterTodaySensor,
+    )
+
+    c = await make_coordinator()
+    total = PetkitPurifiedWaterSensor(c)
+    today = PetkitPurifiedWaterTodaySensor(c)
+    energy = PetkitEnergyConsumedSensor(c)
+
+    assert total.name == "Total Water Purified (estimate)"
+    assert today.name == "Water Purified Today (estimate)"
+    assert energy.name == "Energy Consumption (estimate)"
+    for sensor in (total, today, energy):
+        assert sensor.extra_state_attributes["estimated"] is True
+        assert sensor.extra_state_attributes["basis"]
+    assert total.unique_id == "A4C138A57682_purified_water"
+    assert today.unique_id == "A4C138A57682_purified_water_today"
+    assert energy.unique_id == "A4C138A57682_energy_consumed"

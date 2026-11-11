@@ -85,3 +85,9 @@ Entity ids and unique ids are unchanged.
 - The model is now identified from service data, then manufacturer data, then the advertised name (`Petkit_CTW3_100`).
 - The identification result is logged at WARNING once per start, with the raw advertisement.
 - The test fixture now advertises like a real CTW3 (manufacturer data only), and a test pins the CTW3 alias.
+
+## 0.4.9
+
+- The water and energy sensors are calculated from pump runtime with assumed constants (flow rate, power draw), not
+  measured by the fountain. They are now named "(estimate)" and carry `estimated: true` and a `basis` attribute.
+  Entity ids and unique ids are unchanged, so dashboards and history keep working. Pump runtime is the measured value.
