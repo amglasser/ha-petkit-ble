@@ -24,6 +24,11 @@ class Device:
         self._mac_readable = self.mac_readable
         self._name_readable = self.name_readable
         self._voltage = 0.0
+        # CTW3 only (see parsers.py): pet at the bowl, power source, low battery, supply
+        self._pet_detected = 0
+        self._electric_status = 0
+        self._low_battery = 0
+        self._supply_voltage = 0.0
         self._battery = 0
         self._energy_consumed = 0
         self._filter_time_left = 0
@@ -94,6 +99,10 @@ class Device:
             "smart_time_off": self._smart_time_off,
             "smart_time_on": self._smart_time_on,
             "voltage": self._voltage,
+            "pet_detected": self._pet_detected,
+            "electric_status": self._electric_status,
+            "low_battery": self._low_battery,
+            "supply_voltage": self._supply_voltage,
             "warning_breakdown": self._warning_breakdown,
             "warning_filter": self._warning_filter,
             "warning_water_missing": self._warning_water_missing,

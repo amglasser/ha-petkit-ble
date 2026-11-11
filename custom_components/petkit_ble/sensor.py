@@ -9,15 +9,27 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfTime, UnitOfVolume
+from homeassistant.const import PERCENTAGE, UnitOfElectricPotential, UnitOfEnergy, UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from datetime import datetime
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.entity import DeviceInfo
 
+from homeassistant.util import dt as dt_util
+
 from .const import DOMAIN
 from .coordinator import PetkitBLECoordinator
+from .visits import day_key, format_duration
+
+# The last three visits, newest first.
+VISIT_LABELS = ("Last Visit", "Previous Visit", "Third Last Visit")
+
+VISIT_BASIS = (
+    "pet-detected flag, sampled every few seconds while connected; "
+    "short visits and visits while disconnected are missed"
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -41,7 +53,16 @@ async def async_setup_entry(
         PetkitConnectionStatusSensor(coordinator),
         PetkitConnectionAttemptsSensor(coordinator),
         PetkitLastSeenSensor(coordinator),
+        PetkitSupplyVoltageSensor(coordinator),
+        PetkitVisitsTodaySensor(coordinator),
+        PetkitDrinkTimeTodaySensor(coordinator),
+        PetkitVisitsMonthSensor(coordinator),
+        PetkitDrinkTimeMonthSensor(coordinator),
+        PetkitVisitHistorySensor(coordinator),
     ]
+    for index, label in enumerate(VISIT_LABELS):
+        entities.append(PetkitVisitSensor(coordinator, index, label))
+        entities.append(PetkitVisitDurationSensor(coordinator, index, label))
     
     async_add_entities(entities)
 
@@ -398,3 +419,172 @@ class PetkitLastSeenSensor(PetkitSensorBase):
                 # Legacy numeric timestamp format
                 return datetime.fromtimestamp(last_seen)
         return None
+
+class PetkitSupplyVoltageSensor(PetkitSensorBase):
+    """Voltage of the power adapter (CTW3 only, bytes 20-21 of the state frame)."""
+
+    _attr_device_class = SensorDeviceClass.VOLTAGE
+    _attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: PetkitBLECoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._get_device_id()}_supply_voltage"
+        self._sensor_name_template = "Supply Voltage"
+
+    @property
+    def native_value(self) -> float | None:
+        if self.coordinator.device.alias != "CTW3":
+            return None
+        return self.coordinator.current_data.get("status", {}).get("supply_voltage")
+
+
+class PetkitVisitSensorBase(PetkitSensorBase):
+    """Visit statistics are kept by Home Assistant, so they stay available while the fountain is away."""
+
+    _always_available = True
+    _attr_icon = "mdi:cat"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"estimated": True, "basis": VISIT_BASIS}
+
+
+class PetkitVisitsTodaySensor(PetkitVisitSensorBase):
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    def __init__(self, coordinator: PetkitBLECoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._get_device_id()}_visits_today"
+        self._sensor_name_template = "Visits Today (estimate)"
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.visits.today(dt_util.now())["visits"]
+
+
+class PetkitDrinkTimeTodaySensor(PetkitVisitSensorBase):
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_suggested_unit_of_measurement = UnitOfTime.MINUTES
+    _attr_suggested_display_precision = 1
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    def __init__(self, coordinator: PetkitBLECoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._get_device_id()}_drink_time_today"
+        self._sensor_name_template = "Time at Bowl Today (estimate)"
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.visits.today(dt_util.now())["seconds"]
+
+
+class PetkitVisitsMonthSensor(PetkitVisitSensorBase):
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    def __init__(self, coordinator: PetkitBLECoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._get_device_id()}_visits_month"
+        self._sensor_name_template = "Visits This Month (estimate)"
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.visits.this_month(dt_util.now())["visits"]
+
+
+class PetkitDrinkTimeMonthSensor(PetkitVisitSensorBase):
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_suggested_unit_of_measurement = UnitOfTime.MINUTES
+    _attr_suggested_display_precision = 1
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+
+    def __init__(self, coordinator: PetkitBLECoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._get_device_id()}_drink_time_month"
+        self._sensor_name_template = "Time at Bowl This Month (estimate)"
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.visits.this_month(dt_util.now())["seconds"]
+
+
+class PetkitVisitSensor(PetkitVisitSensorBase):
+    """When one of the last three visits started (timestamp), with its details as attributes."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, coordinator: PetkitBLECoordinator, index: int, label: str) -> None:
+        super().__init__(coordinator)
+        self._index = index
+        self._attr_unique_id = f"{self._get_device_id()}_visit_{index + 1}"
+        self._sensor_name_template = label
+
+    @property
+    def native_value(self) -> datetime | None:
+        visit = self.coordinator.visits.visit(self._index)
+        return dt_util.parse_datetime(visit["start"]) if visit else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        attrs = super().extra_state_attributes
+        visit = self.coordinator.visits.visit(self._index)
+        if visit:
+            attrs.update(
+                ended=visit["end"],
+                duration_seconds=visit["seconds"],
+                duration=format_duration(visit["seconds"]),
+                interrupted=visit["interrupted"],
+            )
+        return attrs
+
+
+class PetkitVisitDurationSensor(PetkitVisitSensorBase):
+    """How long one of the last three visits lasted."""
+
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, coordinator: PetkitBLECoordinator, index: int, label: str) -> None:
+        super().__init__(coordinator)
+        self._index = index
+        self._attr_unique_id = f"{self._get_device_id()}_visit_{index + 1}_duration"
+        self._sensor_name_template = f"{label} Duration"
+
+    @property
+    def native_value(self) -> int | None:
+        visit = self.coordinator.visits.visit(self._index)
+        return visit["seconds"] if visit else None
+
+
+class PetkitVisitHistorySensor(PetkitVisitSensorBase):
+    """All recorded history: daily for a rolling year, monthly forever (as attributes)."""
+
+    # Large and only useful to dashboards: keep them out of the recorder database.
+    _unrecorded_attributes = frozenset({"daily", "monthly"})
+
+    def __init__(self, coordinator: PetkitBLECoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._get_device_id()}_visit_history"
+        self._sensor_name_template = "Visit History (estimate)"
+
+    @property
+    def native_value(self) -> int:
+        """Total visits recorded since tracking started."""
+        return self.coordinator.visits.total_visits
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        visits = self.coordinator.visits
+        attrs = super().extra_state_attributes
+        attrs.update(
+            today=day_key(dt_util.now()),
+            days_recorded=len(visits.daily),
+            months_recorded=len(visits.monthly),
+            daily=visits.daily,
+            monthly=visits.monthly,
+        )
+        return attrs

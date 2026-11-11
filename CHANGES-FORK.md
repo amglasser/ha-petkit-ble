@@ -91,3 +91,12 @@ Entity ids and unique ids are unchanged.
 - The water and energy sensors are calculated from pump runtime with assumed constants (flow rate, power draw), not
   measured by the fountain. They are now named "(estimate)" and carry `estimated: true` and a `basis` attribute.
   Entity ids and unique ids are unchanged, so dashboards and history keep working. Pump runtime is the measured value.
+
+## 0.5.0
+
+- New CTW3 sensors from the state frame: **Pet at Bowl** (byte 19), **AC Power** (byte 3, shows the raw value in
+  `electric_status_raw`), **Low Battery** (byte 7) and **Supply Voltage** (bytes 20-21). They show unknown on other models.
+- **Visit tracking** (`visits.py`): visits and time at the bowl, per day (rolling 365 days) and per month (kept
+  indefinitely), saved across restarts; the last three visits with start and duration; a `Visit History` sensor with the
+  daily and monthly tables as attributes for dashboards. All are labelled "(estimate)" because the flag is only sampled
+  (poll interval, 3 s while a pet is at the bowl). Visits shorter than the sampling gap, or while disconnected, are missed.

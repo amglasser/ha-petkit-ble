@@ -27,6 +27,9 @@ async def async_setup_entry(
         PetkitWaterMissingSensor(coordinator),
         PetkitBreakdownSensor(coordinator),
         PetkitRunningSensor(coordinator),
+        PetkitPetDetectedSensor(coordinator),
+        PetkitACPowerSensor(coordinator),
+        PetkitLowBatterySensor(coordinator),
     ]
     
     async_add_entities(entities)
@@ -125,3 +128,67 @@ class PetkitRunningSensor(PetkitBinarySensorBase):
         """Return true if the fountain is running."""
         running_status = self.coordinator.current_data.get("status", {}).get("running_status")
         return bool(running_status) if running_status is not None else None
+
+class PetkitCTW3BinarySensor(PetkitBinarySensorBase):
+    """These flags only exist in the CTW3 state frame; other models show unknown."""
+
+    @property
+    def _is_ctw3(self) -> bool:
+        return self.coordinator.device.alias == "CTW3"
+
+    def _status(self, key: str):
+        return self.coordinator.current_data.get("status", {}).get(key) if self._is_ctw3 else None
+
+
+class PetkitPetDetectedSensor(PetkitCTW3BinarySensor):
+    """A pet is at the bowl right now (state frame byte 19)."""
+
+    _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
+    _attr_icon = "mdi:cat"
+
+    def __init__(self, coordinator: PetkitBLECoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address.replace(':', '')}_pet_detected"
+        self._attr_name = "Pet at Bowl"
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self._status("pet_detected")
+        return bool(value) if value is not None else None
+
+
+class PetkitACPowerSensor(PetkitCTW3BinarySensor):
+    """Running from the mains adapter (state frame byte 3, value 2 = AC)."""
+
+    _attr_device_class = BinarySensorDeviceClass.PLUG
+
+    def __init__(self, coordinator: PetkitBLECoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address.replace(':', '')}_ac_power"
+        self._attr_name = "AC Power"
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self._status("electric_status")
+        return value == 2 if value is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        # The raw byte is shown so the mapping can be checked against the real fountain.
+        return {"electric_status_raw": self._status("electric_status")}
+
+
+class PetkitLowBatterySensor(PetkitCTW3BinarySensor):
+    """The fountain reports its battery as low (state frame byte 7)."""
+
+    _attr_device_class = BinarySensorDeviceClass.BATTERY
+
+    def __init__(self, coordinator: PetkitBLECoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address.replace(':', '')}_low_battery"
+        self._attr_name = "Low Battery"
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self._status("low_battery")
+        return bool(value) if value is not None else None

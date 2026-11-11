@@ -22,7 +22,10 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.event import async_track_time_change
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_ADDRESS,
@@ -35,6 +38,7 @@ from .ha_bluetooth_adapter import HABluetoothAdapter
 from .PetkitW5BLEMQTT.commands import Commands
 from .PetkitW5BLEMQTT.device import Device
 from .PetkitW5BLEMQTT.event_handlers import EventHandlers
+from .visits import STORAGE_VERSION, VisitTracker
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,6 +49,8 @@ MAX_RECONNECT_DELAY = 60.0
 MAX_SILENT_POLLS = 3
 # Read the battery every N polls (it changes slowly).
 BATTERY_EVERY_N_POLLS = 30
+# While a pet is at the bowl, poll this often so the end of the visit is seen promptly.
+VISIT_POLL_INTERVAL = 3
 
 
 class _NotifyingEventHandlers:
@@ -100,6 +106,12 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
         self._consumer_task: asyncio.Task | None = None
         self._unsub_advertisements = None
         self._unsub_stop = None
+        self._unsub_midnight = None
+
+        # Visits at the bowl, derived from the CTW3 pet-detected flag (see visits.py).
+        self.visits = VisitTracker(
+            Store(hass, STORAGE_VERSION, f"{DOMAIN}_visits_{entry.entry_id}")
+        )
 
         self._wake = asyncio.Event()  # poll now / link lost / shutting down
         self._advertised = asyncio.Event()  # fountain advertisement seen
@@ -120,6 +132,11 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
         if self._supervisor_task is not None:
             return
         self._stopping = False
+        await self.visits.async_load()
+        # The "today" and "this month" figures roll over at midnight even if nothing is received.
+        self._unsub_midnight = async_track_time_change(
+            self.hass, self._on_midnight, hour=0, minute=0, second=2
+        )
         self._unsub_advertisements = bluetooth.async_register_callback(
             self.hass,
             self._on_advertisement,
@@ -154,6 +171,12 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
         self._stopping = True
         self._wake.set()
         self._advertised.set()
+        if self._unsub_midnight is not None:
+            self._unsub_midnight()
+            self._unsub_midnight = None
+        # A visit that is still open is ended at the last time it was seen, then saved.
+        self.visits.close_open(interrupted=True)
+        await self.visits.async_save_now()
         if self._unsub_advertisements is not None:
             self._unsub_advertisements()
             self._unsub_advertisements = None
@@ -201,12 +224,25 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
     @callback
     def _on_link_lost(self) -> None:
         self._session_ready = False
+        # We cannot know what the flag does while out of reach: end any open visit now.
+        self.visits.close_open(interrupted=True)
         self._wake.set()
         self.async_update_listeners()
 
     @callback
     def _on_frame_processed(self) -> None:
         self._last_data = time.monotonic()
+        if self.device.alias == "CTW3":
+            # Only the CTW3 reports the flag (other models leave it at its default).
+            detected = bool(self.device.status.get("pet_detected"))
+            if self.visits.update(detected, dt_util.now()):
+                # Poll quickly right away so the end of the visit is not missed.
+                self._wake.set()
+        self.async_update_listeners()
+
+    @callback
+    def _on_midnight(self, now) -> None:
+        """Day (and month) rolled over: refresh the today / this month sensors."""
         self.async_update_listeners()
 
     # ------------------------------------------------------------------
@@ -226,8 +262,12 @@ class PetkitBLECoordinator(DataUpdateCoordinator[None]):
 
                 # Connected and handshaken: sleep until the next poll, a
                 # manual refresh request or a lost link, whichever is first.
+                # A visit in progress is polled faster so its end is seen promptly.
+                interval = self.poll_interval
+                if self.visits.in_progress:
+                    interval = min(interval, VISIT_POLL_INTERVAL)
                 try:
-                    await asyncio.wait_for(self._wake.wait(), timeout=self.poll_interval)
+                    await asyncio.wait_for(self._wake.wait(), timeout=interval)
                 except asyncio.TimeoutError:
                     pass
                 # Clear only after waking, so a request that arrives while we

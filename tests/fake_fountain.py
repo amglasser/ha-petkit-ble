@@ -81,6 +81,10 @@ class FakeClient:
             return
         if cmd in RESPONSES:
             payload = RESPONSES[cmd]
+            if cmd == 210:
+                payload = self.fountain.state
+            elif cmd == 230:
+                payload = self.fountain.state + CTW3_CONFIG
             if cmd == 213 and self.fountain.zero_id:
                 payload = [0, 0] + [0] * 6 + [ord(c) for c in SERIAL]
             await self.fountain.deliver(self, frame(cmd, payload))
@@ -105,6 +109,11 @@ class FakeFountain:
         self.visible = True
         self.transient_write_failures = 0  # next N writes fail, link stays up
         self.zero_id = False  # device reports an all-zero device id
+        self.state: list[int] = list(CTW3_STATE)  # what the fountain answers to a state request
+
+    def set_state_byte(self, index: int, value: int) -> None:
+        """Change one byte of the 30 byte state frame (19 = pet detected, 3 = electric status, 7 = low battery)."""
+        self.state[index] = value
 
     @property
     def current(self) -> FakeClient:

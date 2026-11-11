@@ -105,7 +105,7 @@ class Parsers:
     # aavdberg/ha-petkit integration.
     #
     # cmd 210 (30 bytes):
-    #   0 power  1 suspend  2 mode (1 normal, 2 smart)  3 electric status
+    #   0 power  1 suspend  2 mode (1 normal, 2 smart)  3 electric status (2 = AC, per aavdberg; unverified here)
     #   4 dnd  5 breakdown  6 water missing  7 low battery  8 filter warning
     #   9-12 pump runtime (s)  13 filter %  14 running  15-18 runtime today (s)
     #   19 pet detected  20-21 supply mV  22-23 battery mV  24 battery %
@@ -133,6 +133,12 @@ class Parsers:
             "running_status": Utils.byte_to_integer(data[14]),
             "battery": data[24],
             "voltage": battery_mv / 1000.0,
+            # Any non-zero value means a pet is at the bowl (firmware 111 has been
+            # seen to report 2 instead of 1).
+            "pet_detected": 1 if data[19] else 0,
+            "electric_status": data[3],
+            "low_battery": 1 if data[7] else 0,
+            "supply_voltage": int.from_bytes(bytes(data[20:22]), "big", signed=True) / 1000.0,
             "pump_runtime_readable": Utils.get_timestamp_days(pump_runtime),
             "pump_runtime_today_readable": Utils.get_timestamp_hours(pump_runtime_today),
             "purified_water": Utils.calculate_water_purified("CTW3", pump_runtime),
